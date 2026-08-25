@@ -9,10 +9,9 @@ const { handleReservaState } = require('./reservaFlowHandler');
 const { ESTADOS_RESERVA } = require('../reservaConstants');
 const { enviarMenuPrincipal } = require('../../services/messagingService');
 const logger = require('../../config/logger');
-const { reenviarComprobanteAlGrupo, GRUPO_JID } = require('../../utils/utils');
+const { reenviarComprobanteAlGrupo } = require('../../utils/utils');
 const alojamientosService = require('../../services/alojamientosService');
 
-const { handleGroupCommand } = require('./groupCommandHandlers');
 const { extractMessageText } = require('./messageProcessorUtils');
 const { sendMessageWithDelay } = require('../../utils/messageDelayUtils');
 // const { manejarPostReserva, manejarNoReserva, procesarComprobantePostReserva } = require('../../routes/postReservaHandler'); // TEMPORALMENTE COMENTADO
@@ -40,16 +39,6 @@ async function procesarMensaje(bot, remitente, mensaje, mensajeObj) {
     // Validación básica de remitente
     if (!remitente || remitente.trim() === '') {
         logger.error('Remitente inválido', { mensaje, mensajeObj });
-        return;
-    }
-
-    // Manejo de mensajes en grupo
-    if (remitente === GRUPO_JID) {
-        const mensajeTexto = typeof mensaje === 'string' 
-            ? mensaje 
-            : extractMessageText(mensajeObj);
-        
-        await handleGroupCommand(bot, remitente, mensajeTexto, mensajeObj);
         return;
     }
 
@@ -168,8 +157,7 @@ async function procesarMensaje(bot, remitente, mensaje, mensajeObj) {
                 // ✅ Enviar SOLO el comando /reservado sin texto adicional
                 if (idReserva) {
                     console.log(`[DEBUG] Enviando comando /reservado ${idReserva} al grupo`);
-                    await bot.sendMessage(GRUPO_JID, { text: `/reservado ${idReserva}` });
-                    console.log(`[DEBUG] ✅ Comando /reservado ${idReserva} enviado exitosamente`);
+                    logger.info('Reserva disponible para confirmación en API administrativa', { reservationId: idReserva });
                 } else {
                     console.log(`[ERROR] No se pudo determinar el ID de la reserva`);
                 }
@@ -482,8 +470,7 @@ async function procesarComprobantePostReserva(bot, remitente, mensajeObj, establ
         try {
             if (reserva && reserva.reservation_id) {
                 console.log(`[DEBUG] Enviando comando /reservado ${reserva.reservation_id} desde post-reserva`);
-                await bot.sendMessage(GRUPO_JID, { text: `/reservado ${reserva.reservation_id}` });
-                console.log(`[DEBUG] ✅ Comando /reservado ${reserva.reservation_id} enviado exitosamente desde post-reserva`);
+                logger.info('Reserva disponible para confirmación en API administrativa', { reservationId: reserva.reservation_id });
             } else {
                 console.log(`[ERROR] No se encontró reservation_id en post-reserva`);
             }

@@ -173,7 +173,11 @@ function authenticateToken(req, res, next) {
     });
   }
 
-  jwt.verify(token, JWT_SECRET, (err, user) => {
+  jwt.verify(token, JWT_SECRET, {
+    algorithms: ['HS256'],
+    issuer: 'villas-julie-admin',
+    audience: 'villas-julie-dashboard'
+  }, (err, user) => {
     if (err) {
       logger.warn('Token JWT inválido', {
         ip: clientIP,

@@ -9,7 +9,7 @@ const crypto = require('crypto');
 const CODE_CONFIG = {
   length: 8,
   expirationHours: 24,
-  secretKey: process.env.JWT_SECRET || 'villa_julie_secret_key_2025'
+  secretKey: process.env.JWT_SECRET
 };
 
 /**

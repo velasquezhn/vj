@@ -1,4 +1,4 @@
-const { downloadContentFromMessage } = require('@whiskeysockets/baileys');
+const { WhatsAppCloudService } = require('../services/whatsappCloudService');
 
 async function descargarMedia(mensaje) {
   let tipoMedia, mediaMessage, extension;
@@ -15,18 +15,12 @@ async function descargarMedia(mensaje) {
     throw new Error('Tipo multimedia no soportado');
   }
 
-  const stream = await downloadContentFromMessage(mediaMessage, tipoMedia);
-
-  const buffer = await new Promise((resolve, reject) => {
-    const chunks = [];
-    stream.on('data', chunk => chunks.push(chunk));
-    stream.on('end', () => resolve(Buffer.concat(chunks)));
-    stream.on('error', reject);
-  });
+  if (!mediaMessage.id) throw new Error('El mensaje multimedia no contiene un media ID de Meta');
+  const { buffer, mimetype } = await new WhatsAppCloudService().downloadMedia(mediaMessage.id);
 
   return {
     buffer,
-    mimetype: mediaMessage.mimetype || (tipoMedia === 'image' ? 'image/jpeg' : 'application/octet-stream'),
+    mimetype: mimetype || mediaMessage.mime_type || (tipoMedia === 'image' ? 'image/jpeg' : 'application/octet-stream'),
     nombreArchivo: `comprobante-${Date.now()}.${extension}`
   };
 }

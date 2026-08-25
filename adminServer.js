@@ -3,9 +3,13 @@ require('dotenv').config();
 
 const express = require('express');
 const cors = require('cors');
-const bodyParser = require('body-parser');
+const logger = require('./config/logger');
 const multer = require('multer');
-const upload = multer({ dest: 'uploads/' });
+const upload = multer({
+  dest: process.env.UPLOAD_DIR || 'uploads/',
+  limits: { fileSize: Number(process.env.MAX_IMAGE_BYTES || 5 * 1024 * 1024), files: 1 },
+  fileFilter: (_req, file, cb) => cb(null, ['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype))
+});
 
 // Importar configuración de Swagger
 const swaggerUi = require('swagger-ui-express');
@@ -44,32 +48,54 @@ const actividadesService = require('./services/actividadesService');
 const backupService = require('./services/backupService');
 
 const app = express();
-const PORT = 4000;
+app.disable('x-powered-by');
+app.set('trust proxy', Number(process.env.TRUST_PROXY_HOPS || 1));
+const { loadConfig } = require('./config/env');
+const { createWhatsAppWebhook } = require('./routes/whatsappWebhook');
+const config = loadConfig({ validateWhatsApp: process.env.NODE_ENV === 'production' });
+const PORT = config.port;
 
-// Logging antes de CORS
-app.use((req, res, next) => {
-  console.log(`[PRE-CORS] ${req.method} ${req.originalUrl} | Origin: ${req.headers.origin}`);
-  next();
+const whatsappConfigured = ['accessToken', 'phoneNumberId', 'verifyToken', 'appSecret']
+  .every((key) => Boolean(config.whatsapp[key]));
+// Debe montarse antes del parser JSON para verificar la firma sobre los bytes originales.
+if (whatsappConfigured && (process.env.NODE_ENV !== 'test' || process.env.ENABLE_WHATSAPP_WEBHOOK === 'true')) {
+  app.use('/webhooks/whatsapp', createWhatsAppWebhook({ config: config.whatsapp }));
+} else {
+  app.all('/webhooks/whatsapp', (_req, res) => res.status(503).json({ error: 'WHATSAPP_NOT_CONFIGURED' }));
+}
+
+// Liveness deliberadamente ligero: no depende de autenticación ni de servicios externos.
+app.get('/health', (_req, res) => res.status(200).json({
+  status: 'ok',
+  service: 'villas-julie-api',
+  environment: config.nodeEnv,
+  whatsappConfigured,
+  uptimeSeconds: Math.floor(process.uptime())
+}));
+app.get('/ready', async (_req, res) => {
+  try {
+    await runQuery('SELECT 1 AS ready');
+    return res.status(whatsappConfigured ? 200 : 503).json({
+      status: whatsappConfigured ? 'ready' : 'not_ready', database: 'ok', whatsappConfigured
+    });
+  } catch (error) {
+    return res.status(503).json({ status: 'not_ready', database: 'error', whatsappConfigured });
+  }
 });
 
 // CORS configurado (debe ir antes que cualquier otro middleware)
 app.use(cors({
-  origin: [
-    'http://localhost:3000',
-    'http://127.0.0.1:3000',
-    'http://localhost:3001',
-    'http://127.0.0.1:3001',
-    'http://159.65.43.192',
-    'http://159.65.43.192:80'
-  ],
+  origin: config.corsOrigins,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
-// Logging después de CORS
 app.use((req, res, next) => {
-  console.log(`[POST-CORS] ${req.method} ${req.originalUrl} | Headers:`, res.getHeaders());
+  const startedAt = Date.now();
+  res.on('finish', () => logger.info('HTTP request', {
+    method: req.method, path: req.path, status: res.statusCode, durationMs: Date.now() - startedAt
+  }));
   next();
 });
 
@@ -91,8 +117,8 @@ app.use(securityLogger);
 // ...existing code...
 
 // Parseo de body
-app.use(bodyParser.json({ limit: '10mb' }));
-app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json({ limit: process.env.BODY_PARSER_LIMIT || '2mb' }));
+app.use(express.urlencoded({ extended: true, limit: process.env.BODY_PARSER_LIMIT || '2mb' }));
 
 // Sanitización de entrada
 app.use(sanitizeInput);
@@ -201,15 +227,6 @@ app.use('/auth', authRoutes);
  *                   example: 2024-08-04T22:42:21.105Z
  *     security: []
  */
-// Health check endpoint (sin autenticación)
-app.get('/health', (req, res) => {
-  res.json({ 
-    success: true, 
-    message: 'Servidor funcionando correctamente',
-    timestamp: new Date().toISOString() 
-  });
-});
-
 /**
  * @swagger
  * /auth/logout:
@@ -519,16 +536,12 @@ const adminDashboardRoutes = require('./routes/adminDashboard');
 const adminCabinTypesRoutes = require('./routes/adminCabinTypes');
 const adminUsersRoutes = require('./routes/adminUsers');
 const adminActivitiesRoutes = require('./routes/adminActivities');
-const queueRoutes = require('./routes/queueRoutes');
 
 // Dashboard, Cabin Types, Activities y Admin Users routes (PROTEGIDAS)
 app.use('/admin/dashboard', authenticateToken, adminDashboardRoutes);
 app.use('/admin/cabin-types', authenticateToken, adminCabinTypesRoutes);
 app.use('/admin/activities', authenticateToken, adminActivitiesRoutes);
 app.use('/admin/admin-users', authenticateToken, adminUsersRoutes);
-
-// Queue Management routes (PROTEGIDAS)
-app.use('/api/bot', authenticateToken, queueRoutes);
 
 // Conversation States routes (PROTEGIDAS)
 app.get('/admin/conversation-states', authenticateToken, async (req, res) => {
@@ -955,51 +968,35 @@ app.post('/admin/backup/create', authenticateToken, async (req, res) => {
  */
 // POST /admin/backup/restore - Restaurar backup
 app.post('/admin/backup/restore', authenticateToken, async (req, res) => {
-  try {
-    const { filename } = req.body;
-    
-    if (!filename) {
-      return res.status(400).json({
-        success: false,
-        message: 'Nombre de archivo requerido'
-      });
-    }
-    
-    console.log(`[BACKUP] Restauración solicitada: ${filename}`);
-    const success = await backupService.restoreBackup(filename);
-    
-    res.json({
-      success,
-      message: success ? 'Backup restaurado exitosamente' : 'Error restaurando backup'
-    });
-  } catch (error) {
-    console.error('[BACKUP] Error en restauración:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error restaurando backup',
-      error: 'INTERNAL_SERVER_ERROR'
-    });
-  }
+  res.status(409).json({
+    success: false,
+    error: 'OFFLINE_RESTORE_REQUIRED',
+    message: 'Detenga el servicio y ejecute: pnpm backup:restore -- <archivo>'
+  });
 });
 
-app.listen(PORT, () => {
-  console.log(`Admin server running at http://localhost:${PORT}`);
+app.use((req, res) => res.status(404).json({ success: false, error: 'NOT_FOUND' }));
+app.use((error, req, res, _next) => {
+  const isUploadError = error instanceof multer.MulterError;
+  logger.error('Unhandled HTTP error', { method: req.method, path: req.path, error: error.message });
+  res.status(isUploadError ? 400 : 500).json({
+    success: false,
+    error: isUploadError ? 'INVALID_UPLOAD' : 'INTERNAL_SERVER_ERROR'
+  });
+});
+
+function startServer() {
+  const server = app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Admin server running on 0.0.0.0:${PORT}`);
   
   // Iniciar servicio de backup automático
   console.log('🔄 Iniciando servicio de backup automático...');
   backupService.start();
   
-  // Inicializar sistema de colas WhatsApp de forma segura
-  console.log('🔄 Inicializando sistema de colas WhatsApp...');
-  setTimeout(async () => {
-    try {
-      const { getQueueManager } = require('./services/whatsappQueueService');
-      const queueManager = getQueueManager();
-      await queueManager.init();
-      console.log('✅ Sistema de colas inicializado correctamente');
-    } catch (error) {
-      console.error('❌ Error inicializando sistema de colas:', error.message);
-      console.log('⚠️ El sistema funcionará en modo fallback sin colas');
-    }
-  }, 1000); // Retrasar la inicialización 1 segundo
-});
+  });
+  return server;
+}
+
+if (require.main === module) startServer();
+
+module.exports = { app, startServer };

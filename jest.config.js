@@ -8,7 +8,6 @@ module.exports = {
   testEnvironment: 'node',
   
   // Archivos de setup
-  setupFilesAfterEnv: ['<rootDir>/tests/setup-simple.js'],
   setupFiles: ['<rootDir>/tests/env.setup.js'],
   
   // Directorios de pruebas
@@ -33,7 +32,7 @@ module.exports = {
   ],
   
   // Cobertura de código
-  collectCoverage: true,
+  collectCoverage: false,
   collectCoverageFrom: [
     '**/*.js',
     '!**/node_modules/**',
@@ -104,23 +103,7 @@ module.exports = {
   },
   
   // Configuración de reportes
-  reporters: [
-    'default',
-    [
-      'jest-html-reporters',
-      {
-        publicPath: './coverage/html-report',
-        filename: 'report.html',
-        openReport: false,
-        expand: true,
-        hideIcon: false,
-        pageTitle: 'Bot VJ - Reporte de Pruebas',
-        logoImgPath: undefined,
-        includeFailureMsg: true,
-        includeSuiteFailure: true
-      }
-    ]
-  ],
+  reporters: ['default'],
   
   // Configuración de verbose para debugging
   verbose: false,

@@ -1,26 +1,17 @@
 const { db } = require('../db');
+const logger = require('../config/logger');
 
 exports.getAllCabanas = (req, res) => {
-  console.log('[DEBUG] getAllCabanas called');
-  
   const query = 'SELECT * FROM Cabins ORDER BY cabin_id';
-  console.log('[DEBUG] Executing query:', query);
-  
   db.all(query, [], (err, rows) => {
-    console.log('[DEBUG] Query callback - Error:', err);
-    console.log('[DEBUG] Query callback - Rows:', rows);
-    
     if (err) {
-      console.error('Database error:', err);
-      return res.status(500).json({ success: false, message: 'Error leyendo las cabañas: ' + err.message });
+      logger.error('Error reading cabins', { error: err.message });
+      return res.status(500).json({ success: false, message: 'Error leyendo las cabañas' });
     }
     
     if (!rows || rows.length === 0) {
-      console.log('[DEBUG] No rows found');
       return res.json([]);
     }
-    
-    console.log('[DEBUG] Raw rows from database:', rows);
     
     // Map database fields to frontend expected fields
     const mappedCabanas = rows.map(cabin => ({
@@ -35,12 +26,11 @@ exports.getAllCabanas = (req, res) => {
       precio_por_noche: cabin.price,
       description: cabin.description,
       descripcion: cabin.description,
-      disponible: 1, // Default to available
+      disponible: cabin.is_active !== 0,
       created_at: cabin.created_at,
       updated_at: cabin.updated_at
     }));
     
-    console.log('[DEBUG] Mapped cabanas:', mappedCabanas);
     res.json(mappedCabanas);
   });
 };

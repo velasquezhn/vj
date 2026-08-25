@@ -1,18 +1,8 @@
 // utils.js (versión corregida)
 const fs = require('fs');
 const path = require('path');
-const { downloadContentFromMessage } = require('@whiskeysockets/baileys');
-const streamToBuffer = require('stream-to-buffer');
-
-const GRUPO_JID = process.env.GRUPO_JID || '120363401911054356@g.us';
-
-// Función auxiliar para convertir stream a buffer
-const streamToBufferPromise = (stream) => new Promise((resolve, reject) => {
-  streamToBuffer(stream, (err, buffer) => {
-    if (err) return reject(err);
-    resolve(buffer);
-  });
-});
+const { WhatsAppCloudService } = require('../services/whatsappCloudService');
+const GRUPO_JID = null;
 
 // Función para guardar buffer en archivo (mejorada)
 const guardarArchivo = async (buffer, nombreArchivo) => {
@@ -68,15 +58,16 @@ const validarDisponibilidad = async (fechaEntrada, fechaSalida) => {
 
 // Enviar mensaje al grupo usando safeSend
 const enviarAlGrupo = async (bot, texto) => {
-  await safeSend(bot, GRUPO_JID, texto);
+  console.info('[Administración] Notificación disponible en el panel/API', { preview: String(texto).slice(0, 80) });
+  return false;
 };
 
 // Descargar contenido de mensaje como buffer (mejorada)
 const descargarContenido = async (messageContent, tipo) => {
   try {
-    const stream = await downloadContentFromMessage(messageContent, tipo);
-    if (!stream) throw new Error('Stream no disponible');
-    return await streamToBufferPromise(stream);
+    if (!messageContent?.id) throw new Error('Media ID de Meta no disponible');
+    const result = await new WhatsAppCloudService().downloadMedia(messageContent.id);
+    return result.buffer;
   } catch (error) {
     console.error('[Descarga] Error:', error.message);
     return null;
@@ -159,15 +150,12 @@ const reenviarComprobanteAlGrupo = async (bot, mensaje, datos, reservaInfo = nul
       sendOptions.fileName = mediaData.nombreArchivo;
     }
 
-    // Enviar al grupo
-    console.log(`[DEBUG] Enviando ${mediaType} al grupo...`);
-    await bot.sendMessage(GRUPO_JID, sendOptions);
-    console.log(`[Grupo] Comprobante enviado: ${mediaData.nombreArchivo}`);
+    console.info(`[Administración] Comprobante almacenado: ${mediaData.nombreArchivo}`);
 
     // Enviar info de reserva si se proporciona
     if (reservaInfo) {
       console.log('[DEBUG] Enviando información de reserva al grupo...');
-      await safeSend(bot, GRUPO_JID, reservaInfo);
+      console.info('[Administración] Reserva disponible en el panel/API', { preview: reservaInfo.slice(0, 80) });
     }
 
     // ⚠️ COMANDO /reservado SE MANEJA AHORA EN messageProcessor.js
@@ -176,7 +164,6 @@ const reenviarComprobanteAlGrupo = async (bot, mensaje, datos, reservaInfo = nul
     return rutaRelativa;
   } catch (error) {
     console.error(`[Comprobante] Error: ${error.message}`);
-    await safeSend(bot, GRUPO_JID, `⚠️ Error con comprobante: ${error.message}`);
     return null;
   }
 };

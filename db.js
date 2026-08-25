@@ -1,13 +1,20 @@
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
+const fs = require('fs');
+const logger = require('./config/logger');
 
-const DB_PATH = path.join(__dirname, 'bot_database.sqlite');
+const DB_PATH = path.resolve(process.env.DB_PATH || path.join(__dirname, 'data', 'bot_database.sqlite'));
+fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
 
 const db = new sqlite3.Database(DB_PATH, (err) => {
   if (err) {
-    console.error('Error opening database:', err.message);
+    logger.error('Error opening database', { error: err.message });
   } else {
-    console.log('Connected to SQLite database.');
+    db.configure('busyTimeout', Number(process.env.DB_BUSY_TIMEOUT_MS || 5000));
+    db.exec('PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;', (pragmaError) => {
+      if (pragmaError) logger.error('Error configuring SQLite', { error: pragmaError.message });
+    });
+    logger.info('SQLite connected', { database: path.basename(DB_PATH) });
   }
 });
 
@@ -24,22 +31,26 @@ function runQuery(sql, params = []) {
 }
 
 function runExecute(sql, params = []) {
-  console.log('[DB] Executing SQL:', sql, 'with params:', params);
   return new Promise((resolve, reject) => {
     db.run(sql, params, function(err) {
       if (err) {
-        console.error('[DB] Error executing SQL:', err);
+        logger.error('Database execution failed', { error: err.message });
         reject(err);
       } else {
-        console.log('[DB] SQL executed successfully. lastID:', this.lastID, 'changes:', this.changes);
         resolve({ lastID: this.lastID, changes: this.changes });
       }
     });
   });
 }
 
+function closeDatabase() {
+  return new Promise((resolve, reject) => db.close((error) => error ? reject(error) : resolve()));
+}
+
 module.exports = {
   runQuery,
   runExecute,
-  db
+  db,
+  DB_PATH,
+  closeDatabase
 };

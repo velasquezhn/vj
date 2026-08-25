@@ -2,7 +2,9 @@ const Reserva = require('../models/Reserva');
 const fs = require('fs');
 const path = require('path');
 
-const COMPROBANTES_DIR = path.join(__dirname, '../../admin-frontend/public/comprobantes');
+const COMPROBANTES_DIR = path.resolve(process.env.RECEIPTS_DIR || path.join(__dirname, '../public/comprobantes'));
+const ALLOWED_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'application/pdf']);
+const MAX_RECEIPT_BYTES = Number(process.env.MAX_RECEIPT_BYTES || 5 * 1024 * 1024);
 
 if (!fs.existsSync(COMPROBANTES_DIR)) {
   fs.mkdirSync(COMPROBANTES_DIR, { recursive: true });
@@ -10,18 +12,18 @@ if (!fs.existsSync(COMPROBANTES_DIR)) {
 
 async function guardarComprobante(reservaId, buffer, mimetype, nombreArchivo) {
   try {
-    console.log('guardarComprobante llamado con reservaId:', reservaId, 'nombreArchivo:', nombreArchivo);
+    if (!Buffer.isBuffer(buffer) || buffer.length === 0 || buffer.length > MAX_RECEIPT_BYTES) {
+      throw new Error('Tamaño de comprobante inválido');
+    }
+    if (!ALLOWED_MIME_TYPES.has(mimetype)) throw new Error('Tipo de comprobante no permitido');
+    const safeName = path.basename(nombreArchivo || 'comprobante.bin').replace(/[^a-zA-Z0-9._-]/g, '_');
     // Save file to disk
-    const filePath = path.join(COMPROBANTES_DIR, `${reservaId}-${Date.now()}-${nombreArchivo}`);
+    const filePath = path.join(COMPROBANTES_DIR, `${reservaId}-${Date.now()}-${safeName}`);
     await fs.promises.writeFile(filePath, buffer);
-    console.log('Archivo guardado en disco:', filePath);
 
     // Store relative path in DB
     const relativePath = `/comprobantes/${path.basename(filePath)}`;
-    console.log('Ruta relativa para DB:', relativePath);
-
     const resultado = await Reserva.updateComprobante(reservaId, null, null, relativePath);
-    console.log('Resultado updateComprobante:', resultado);
     return resultado;
   } catch (error) {
     console.error('Error guardando comprobante:', error);
@@ -55,4 +57,4 @@ async function eliminarComprobante(reservaId) {
   }
 }
 
-module.exports = { guardarComprobante, actualizarEstado, eliminarComprobante };
+module.exports = { guardarComprobante, actualizarEstado, eliminarComprobante, COMPROBANTES_DIR, ALLOWED_MIME_TYPES, MAX_RECEIPT_BYTES };

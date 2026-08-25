@@ -1,7 +1,9 @@
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 
-const DB_PATH = path.join(__dirname, '..', 'bot_database.sqlite');
+const fs = require('fs');
+const DB_PATH = path.resolve(process.env.DB_PATH || path.join(__dirname, 'bot_database.sqlite'));
+fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
 
 const schema = `
 -- Tabla de usuarios

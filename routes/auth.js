@@ -35,7 +35,7 @@ const logger = require('../config/logger');
  *               password:
  *                 type: string
  *                 format: password
- *                 example: admin123
+ *                 example: use-a-secret-password-manager
  *                 description: Contraseña del administrador
  *     responses:
  *       200:

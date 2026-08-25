@@ -3,9 +3,19 @@ node_modules/
 
 # Environment variables
 .env
+.env.*
+!.env.example
 
 # Data folder (sessions, cache, etc.)
 data/session/
+data/*.sqlite*
+bot_database.sqlite*
+backups/*
+!backups/.gitkeep
+public/comprobantes/*
+!public/comprobantes/.gitkeep
+uploads/
+work/
 # Logs
 *.log
 logs/
@@ -32,7 +42,7 @@ coverage/
 # Dependency directories
 jspm_packages/
 
-# Optional lock files
+# Lockfiles alternativos; pnpm-lock.yaml sí se versiona.
 package-lock.json
 yarn.lock
 

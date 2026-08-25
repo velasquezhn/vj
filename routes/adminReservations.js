@@ -13,11 +13,12 @@ const {
   logAdminActivity
 } = require('../middleware/apiValidation');
 const logger = require('../config/logger');
+const { COMPROBANTES_DIR, ALLOWED_MIME_TYPES, MAX_RECEIPT_BYTES } = require('../services/comprobanteService');
 
 // Setup multer for file uploads to public/comprobantes
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    const dir = path.join(__dirname, '../public/comprobantes');
+    const dir = COMPROBANTES_DIR;
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
@@ -30,7 +31,11 @@ const storage = multer.diskStorage({
     cb(null, file.fieldname + '-' + uniqueSuffix + ext);
   }
 });
-const upload = multer({ storage: storage });
+const upload = multer({
+  storage,
+  limits: { fileSize: MAX_RECEIPT_BYTES, files: 1 },
+  fileFilter: (_req, file, cb) => cb(null, ALLOWED_MIME_TYPES.has(file.mimetype))
+});
 
 /**
  * @swagger

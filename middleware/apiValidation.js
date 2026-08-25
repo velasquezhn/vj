@@ -288,8 +288,7 @@ function logAdminActivity(activity) {
       const ip = req.ip || req.connection.remoteAddress;
       const userAgent = req.get('User-Agent') || 'Unknown';
       
-      // Log básico de la actividad
-      console.log(`[${timestamp}] Admin Activity: ${activity} - IP: ${ip} - User-Agent: ${userAgent.substring(0, 50)}`);
+      logger.info('Admin activity', { activity, ip });
       
       // Agregar información al request para usar en el handler
       req.adminActivity = {

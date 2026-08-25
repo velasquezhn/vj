@@ -13,7 +13,6 @@
 require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
-const { spawn } = require('child_process');
 const zlib = require('zlib');
 const sqlite3 = require('sqlite3').verbose();
 const winston = require('winston');
@@ -23,11 +22,12 @@ const CONFIG = {
   enabled: process.env.BACKUP_ENABLED === 'true',
   intervalHours: parseInt(process.env.BACKUP_INTERVAL_HOURS) || 6,
   retentionDays: parseInt(process.env.BACKUP_RETENTION_DAYS) || 7,
-  backupDir: process.env.BACKUP_DIR || './backups',
-  dbPath: process.env.DB_PATH || './bot_database.sqlite',
+  backupDir: path.resolve(process.env.BACKUP_DIR || './backups'),
+  dbPath: path.resolve(process.env.DB_PATH || './data/bot_database.sqlite'),
   compression: process.env.BACKUP_COMPRESSION === 'true',
   verify: process.env.BACKUP_VERIFY === 'true'
 };
+fs.mkdirSync(CONFIG.backupDir, { recursive: true });
 
 // Logger específico para backups
 const logger = winston.createLogger({
@@ -145,12 +145,12 @@ class BackupService {
         originalSize: `${(originalStats.size / 1024 / 1024).toFixed(2)} MB`
       });
 
+      // La API online-backup incluye páginas que aún estén en WAL.
+      const consistentPath = CONFIG.compression ? `${backupPath}.tmp.sqlite` : backupPath;
+      await this.createConsistentBackup(consistentPath);
       if (CONFIG.compression) {
-        // Backup comprimido
-        await this.createCompressedBackup(CONFIG.dbPath, backupPath);
-      } else {
-        // Backup sin comprimir
-        fs.copyFileSync(CONFIG.dbPath, backupPath);
+        await this.createCompressedBackup(consistentPath, backupPath);
+        fs.unlinkSync(consistentPath);
       }
 
       // Verificar el backup creado
@@ -202,6 +202,17 @@ class BackupService {
     } finally {
       this.isRunning = false;
     }
+  }
+
+  createConsistentBackup(destinationPath) {
+    return new Promise((resolve, reject) => {
+      const source = new sqlite3.Database(CONFIG.dbPath, sqlite3.OPEN_READONLY, (openError) => {
+        if (openError) return reject(openError);
+        source.backup(destinationPath, (backupError) => {
+          source.close(() => backupError ? reject(backupError) : resolve());
+        });
+      });
+    });
   }
 
   /**
@@ -313,9 +324,15 @@ class BackupService {
    */
   async restoreBackup(backupFilename) {
     try {
+      const safeFilename = path.basename(String(backupFilename || ''));
+      if (safeFilename !== backupFilename || !/^backup_[A-Za-z0-9_.-]+\.sqlite(?:\.gz)?$/.test(safeFilename)) {
+        throw new Error('Nombre de backup inválido');
+      }
+      backupFilename = safeFilename;
       logger.info('Iniciando restauración de backup', { backup: backupFilename });
 
-      const backupPath = path.join(CONFIG.backupDir, backupFilename);
+      const backupPath = path.resolve(CONFIG.backupDir, backupFilename);
+      if (path.dirname(backupPath) !== path.resolve(CONFIG.backupDir)) throw new Error('Ruta de backup inválida');
       
       if (!fs.existsSync(backupPath)) {
         throw new Error(`Backup no encontrado: ${backupFilename}`);

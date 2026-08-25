@@ -2,7 +2,7 @@ const db = require('../db');
 
 const getAllStates = async () => {
   try {
-    const states = await db.runQuery('SELECT * FROM ConversationStates');
+    const states = await db.runQuery('SELECT state_id AS id, user_number, state, data, created_at, updated_at FROM ConversationStates');
     return states;
   } catch (e) {
     console.error('Error loading conversation states:', e);
@@ -12,7 +12,7 @@ const getAllStates = async () => {
 
 const getStateById = async (id) => {
   try {
-    const states = await db.runQuery('SELECT * FROM ConversationStates WHERE id = ?', [id]);
+    const states = await db.runQuery('SELECT state_id AS id, user_number, state, data, created_at, updated_at FROM ConversationStates WHERE state_id = ?', [id]);
     return states.length > 0 ? states[0] : null;
   } catch (e) {
     console.error('Error loading conversation state:', e);
@@ -43,7 +43,7 @@ const updateState = async (id, stateData) => {
   try {
     const sql = `
       UPDATE ConversationStates SET user_number = ?, state = ?, data = ?, updated_at = datetime('now')
-      WHERE id = ?
+      WHERE state_id = ?
     `;
     const params = [
       stateData.user_number,
@@ -61,7 +61,7 @@ const updateState = async (id, stateData) => {
 
 const deleteState = async (id) => {
   try {
-    const sql = `DELETE FROM ConversationStates WHERE id = ?`;
+    const sql = `DELETE FROM ConversationStates WHERE state_id = ?`;
     const result = await db.runExecute(sql, [id]);
     return result.changes > 0;
   } catch (e) {

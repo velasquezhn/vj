@@ -4,16 +4,20 @@ const bcrypt = require('bcryptjs');
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
-const DB_PATH = path.join(__dirname, '..', 'bot_database.sqlite');
+const DB_PATH = path.resolve(process.env.DB_PATH || path.join(__dirname, '..', 'data', 'bot_database.sqlite'));
 const db = new sqlite3.Database(DB_PATH);
 
-const username = process.env.ADMIN_DEFAULT_USERNAME || 'Admin';
-const password = process.env.ADMIN_DEFAULT_PASSWORD || 'Admin123';
-const email = `${username.toLowerCase()}@villasjulie.com`;
-const fullName = username;
-const role = 'superadmin';
+const username = process.env.ADMIN_DEFAULT_USERNAME;
+const password = process.env.ADMIN_DEFAULT_PASSWORD;
+const email = process.env.ADMIN_DEFAULT_EMAIL || null;
+const fullName = process.env.ADMIN_DEFAULT_FULL_NAME || username;
+const role = process.env.ADMIN_DEFAULT_ROLE || 'superadmin';
 
 async function run() {
+  if (!username || !password || password.length < 12) {
+    console.error('ADMIN_DEFAULT_USERNAME y ADMIN_DEFAULT_PASSWORD (mínimo 12 caracteres) son obligatorios.');
+    process.exit(1);
+  }
   // 1. Crear tabla Admins si no existe
   const createTableSQL = `
     CREATE TABLE IF NOT EXISTS Admins (
