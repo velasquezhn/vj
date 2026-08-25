@@ -36,7 +36,7 @@ Copie `.env.example`; nunca versione `.env` ni credenciales.
 - `CORS_ORIGIN`: orígenes permitidos separados por coma.
 - `JWT_SECRET`: secreto aleatorio de al menos 32 bytes.
 - `ADMIN_DEFAULT_USERNAME` y `ADMIN_DEFAULT_PASSWORD`: solo para `pnpm admin:create`; no se crean usuarios predeterminados.
-- `WHATSAPP_API_VERSION`: versión Graph API fijada (`v23.0` por defecto).
+- `WHATSAPP_API_VERSION`: versión Graph API fijada (`v26.0` por defecto).
 - `WHATSAPP_ACCESS_TOKEN`: token permanente de system user.
 - `WHATSAPP_PHONE_NUMBER_ID`: ID del número, no el número visible.
 - `WHATSAPP_VERIFY_TOKEN`: valor aleatorio elegido por el propietario.

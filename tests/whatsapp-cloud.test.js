@@ -5,7 +5,7 @@ const { createWhatsAppWebhook, verifySignature, extractEvents } = require('../ro
 const { WhatsAppCloudService, normalizeRecipient } = require('../services/whatsappCloudService');
 
 const config = {
-  apiVersion: 'v23.0', accessToken: 'test-token', phoneNumberId: '12345',
+  apiVersion: 'v26.0', accessToken: 'test-token', phoneNumberId: '12345',
   verifyToken: 'verify-me', appSecret: 'app-secret'
 };
 const eventStore = { claim: async () => true, complete: async () => undefined, fail: async () => undefined };

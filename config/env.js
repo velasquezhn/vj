@@ -15,7 +15,7 @@ function loadConfig({ validateWhatsApp = process.env.NODE_ENV === 'production' }
     corsOrigins: (process.env.CORS_ORIGIN || 'http://localhost:5173')
       .split(',').map((value) => value.trim()).filter(Boolean),
     whatsapp: {
-      apiVersion: process.env.WHATSAPP_API_VERSION || 'v23.0',
+      apiVersion: process.env.WHATSAPP_API_VERSION || 'v26.0',
       accessToken: process.env.WHATSAPP_ACCESS_TOKEN || '',
       phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || '',
       verifyToken: process.env.WHATSAPP_VERIFY_TOKEN || '',
