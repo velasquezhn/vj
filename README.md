@@ -63,7 +63,35 @@ docker run --rm -p 4000:4000 --env-file .env \
   -v vj-data:/app/data -v vj-receipts:/app/public/comprobantes villas-julie-api
 ```
 
-Monte volúmenes sobre `/app/data`, `/app/backups` y `/app/public/comprobantes`. Use una sola réplica con SQLite; para alta disponibilidad migre a PostgreSQL y deduplicación compartida.
+En Docker autogestionado, persista `/app/data`, `/app/backups` y `/app/public/comprobantes`. Use una sola réplica con SQLite; para alta disponibilidad migre a PostgreSQL y deduplicación compartida.
+
+### Despliegue económico recomendado: Railway
+
+El repositorio incluye `railway.json`: usa el `Dockerfile`, comprueba `/health`, reinicia ante fallos y fija una sola réplica, requisito de SQLite.
+
+1. Cree un servicio desde `velasquezhn/vj` y genere el dominio HTTPS gratuito de Railway.
+2. Adjunte **un volumen** en `/app/storage`.
+3. Configure las variables de `.env.example` y use estas rutas persistentes:
+
+```dotenv
+NODE_ENV=production
+RAILWAY_RUN_UID=0
+DB_PATH=/app/storage/data/bot_database.sqlite
+RECEIPTS_DIR=/app/storage/comprobantes
+UPLOAD_DIR=/app/storage/uploads
+BACKUP_DIR=/app/storage/backups
+LOG_DIR=/app/storage/logs
+BACKUP_ENABLED=true
+BACKUP_INTERVAL_HOURS=24
+BACKUP_RETENTION_DAYS=7
+BACKUP_VERIFY=true
+```
+
+4. Defina `CORS_ORIGIN` con la URL exacta del frontend de Cloudflare Pages, sin `/` final.
+5. Genere el dominio público y compruebe `https://DOMINIO/health` y `https://DOMINIO/ready`.
+6. Cree el administrador ejecutando `pnpm admin:create` en el servicio con las variables temporales `ADMIN_DEFAULT_USERNAME`, `ADMIN_DEFAULT_PASSWORD` y, opcionalmente, `ADMIN_DEFAULT_EMAIL`; elimínelas después.
+
+`RAILWAY_RUN_UID=0` es necesario porque Railway monta sus volúmenes con propietario `root`; no lo use fuera de Railway. No ejecute más de una réplica mientras use SQLite. Railway monta el volumen solo durante la ejecución; por eso la migración permanece en el comando de inicio del contenedor.
 
 Backups consistentes (incluyen WAL):
 

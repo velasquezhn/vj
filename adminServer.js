@@ -4,6 +4,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const logger = require('./config/logger');
+const path = require('path');
 const multer = require('multer');
 const upload = multer({
   dest: process.env.UPLOAD_DIR || 'uploads/',
@@ -19,7 +20,7 @@ const swaggerSpecs = require('./config/swagger');
 // Rutas de huéspedes (usuarios normales)
 const usersRoutes = require('./routes/users');
 const { helmetConfig, generalLimiter, securityLogger, sanitizeInput, attackDetection } = require('./middleware/security');
-const { authenticateToken, authorizeRole, rateLimitByUser } = require('./middleware/auth');
+const { authenticateToken, authorizeRole } = require('./middleware/auth');
 const { advancedSecurityMiddleware, enhancedValidationHandler } = require('./middleware/advancedValidation');
 const { 
   validateUserCreation, 
@@ -111,8 +112,9 @@ app.use(helmetConfig);
 // Logging de seguridad
 app.use(securityLogger);
 
-// Rate limiting general - DESACTIVADO PARA DESARROLLO
-// app.use('/admin', generalLimiter);
+// Limita el panel incluso detrás del proxy de producción. El login conserva
+// además su limitador específico, más estricto.
+app.use('/admin', generalLimiter);
 
 // ...existing code...
 
@@ -132,15 +134,12 @@ app.use(attackDetection);
 // Validación de seguridad avanzada (NUEVO)
 app.use(advancedSecurityMiddleware);
 
-// Rate limiting específico para usuarios autenticados en rutas admin - DESACTIVADO PARA DESARROLLO
-
 // Rutas de huéspedes (usuarios normales, no admins)
 app.use('/users', usersRoutes);
-// app.use('/admin', rateLimitByUser(200, 15 * 60 * 1000)); // 200 requests por 15 min
 
 // Serve static files for simple frontend UI
-const path = require('path');
-app.use('/comprobantes', express.static(path.join(__dirname, 'public/comprobantes')));
+const receiptsDir = path.resolve(process.env.RECEIPTS_DIR || path.join(__dirname, 'public/comprobantes'));
+app.use('/comprobantes', express.static(receiptsDir));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ============================================================================
