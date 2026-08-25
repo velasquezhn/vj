@@ -12,7 +12,7 @@ function loadConfig({ validateWhatsApp = process.env.NODE_ENV === 'production' }
     port: Number(process.env.PORT || 4000),
     databasePath: path.resolve(process.env.DB_PATH || './data/bot_database.sqlite'),
     jwtSecret: process.env.JWT_SECRET || '',
-    corsOrigins: (process.env.CORS_ORIGIN || 'http://localhost:3000')
+    corsOrigins: (process.env.CORS_ORIGIN || 'http://localhost:5173')
       .split(',').map((value) => value.trim()).filter(Boolean),
     whatsapp: {
       apiVersion: process.env.WHATSAPP_API_VERSION || 'v23.0',
