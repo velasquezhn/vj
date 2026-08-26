@@ -20,6 +20,7 @@ pnpm start
 ```
 
 El servidor escucha `0.0.0.0:$PORT`. Compruebe `GET http://localhost:4000/health`.
+En Docker, el arranque ejecuta automáticamente la migración y la carga idempotente de las 13 cabañas antes de iniciar el servidor.
 
 Cree el primer administrador después de migrar, pasando las credenciales solo por el entorno:
 
