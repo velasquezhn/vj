@@ -6,6 +6,14 @@ function required(name) {
   return value.trim();
 }
 
+function parseBoolean(name, defaultValue) {
+  const value = process.env[name];
+  if (value === undefined || value === '') return defaultValue;
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  throw new Error(`${name} debe ser true o false`);
+}
+
 function loadConfig({ validateWhatsApp = process.env.NODE_ENV === 'production' } = {}) {
   const config = {
     nodeEnv: process.env.NODE_ENV || 'development',
@@ -15,6 +23,7 @@ function loadConfig({ validateWhatsApp = process.env.NODE_ENV === 'production' }
     corsOrigins: (process.env.CORS_ORIGIN || 'http://localhost:5173')
       .split(',').map((value) => value.trim()).filter(Boolean),
     whatsapp: {
+      enabled: parseBoolean('WHATSAPP_ENABLED', true),
       apiVersion: process.env.WHATSAPP_API_VERSION || 'v26.0',
       accessToken: process.env.WHATSAPP_ACCESS_TOKEN || '',
       phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || '',
@@ -26,7 +35,7 @@ function loadConfig({ validateWhatsApp = process.env.NODE_ENV === 'production' }
   if (!Number.isInteger(config.port) || config.port < 1 || config.port > 65535) {
     throw new Error('PORT debe ser un puerto TCP válido');
   }
-  if (validateWhatsApp) {
+  if (validateWhatsApp && config.whatsapp.enabled) {
     ['WHATSAPP_ACCESS_TOKEN', 'WHATSAPP_PHONE_NUMBER_ID', 'WHATSAPP_VERIFY_TOKEN', 'META_APP_SECRET']
       .forEach(required);
   }
@@ -36,4 +45,4 @@ function loadConfig({ validateWhatsApp = process.env.NODE_ENV === 'production' }
   return config;
 }
 
-module.exports = { loadConfig, required };
+module.exports = { loadConfig, required, parseBoolean };

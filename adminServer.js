@@ -56,13 +56,15 @@ const { createWhatsAppWebhook } = require('./routes/whatsappWebhook');
 const config = loadConfig({ validateWhatsApp: process.env.NODE_ENV === 'production' });
 const PORT = config.port;
 
-const whatsappConfigured = ['accessToken', 'phoneNumberId', 'verifyToken', 'appSecret']
+const whatsappEnabled = config.whatsapp.enabled;
+const whatsappConfigured = whatsappEnabled && ['accessToken', 'phoneNumberId', 'verifyToken', 'appSecret']
   .every((key) => Boolean(config.whatsapp[key]));
 // Debe montarse antes del parser JSON para verificar la firma sobre los bytes originales.
 if (whatsappConfigured && (process.env.NODE_ENV !== 'test' || process.env.ENABLE_WHATSAPP_WEBHOOK === 'true')) {
   app.use('/webhooks/whatsapp', createWhatsAppWebhook({ config: config.whatsapp }));
 } else {
-  app.all('/webhooks/whatsapp', (_req, res) => res.status(503).json({ error: 'WHATSAPP_NOT_CONFIGURED' }));
+  const error = whatsappEnabled ? 'WHATSAPP_NOT_CONFIGURED' : 'WHATSAPP_DISABLED';
+  app.all('/webhooks/whatsapp', (_req, res) => res.status(503).json({ error }));
 }
 
 // Liveness deliberadamente ligero: no depende de autenticación ni de servicios externos.
@@ -70,17 +72,19 @@ app.get('/health', (_req, res) => res.status(200).json({
   status: 'ok',
   service: 'villas-julie-api',
   environment: config.nodeEnv,
+  whatsappEnabled,
   whatsappConfigured,
   uptimeSeconds: Math.floor(process.uptime())
 }));
 app.get('/ready', async (_req, res) => {
   try {
     await runQuery('SELECT 1 AS ready');
-    return res.status(whatsappConfigured ? 200 : 503).json({
-      status: whatsappConfigured ? 'ready' : 'not_ready', database: 'ok', whatsappConfigured
+    const ready = !whatsappEnabled || whatsappConfigured;
+    return res.status(ready ? 200 : 503).json({
+      status: ready ? 'ready' : 'not_ready', database: 'ok', whatsappEnabled, whatsappConfigured
     });
   } catch (error) {
-    return res.status(503).json({ status: 'not_ready', database: 'error', whatsappConfigured });
+    return res.status(503).json({ status: 'not_ready', database: 'error', whatsappEnabled, whatsappConfigured });
   }
 });
 

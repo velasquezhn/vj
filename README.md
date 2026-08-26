@@ -36,6 +36,7 @@ Copie `.env.example`; nunca versione `.env` ni credenciales.
 - `CORS_ORIGIN`: orígenes permitidos separados por coma.
 - `JWT_SECRET`: secreto aleatorio de al menos 32 bytes.
 - `ADMIN_DEFAULT_USERNAME` y `ADMIN_DEFAULT_PASSWORD`: solo para `pnpm admin:create`; no se crean usuarios predeterminados.
+- `WHATSAPP_ENABLED`: use `false` únicamente durante el despliegue inicial o mantenimiento. Permite operar el panel sin credenciales de Meta; el webhook responde `503 WHATSAPP_DISABLED`. Cámbielo a `true` antes de habilitar mensajería real.
 - `WHATSAPP_API_VERSION`: versión Graph API fijada (`v26.0` por defecto).
 - `WHATSAPP_ACCESS_TOKEN`: token permanente de system user.
 - `WHATSAPP_PHONE_NUMBER_ID`: ID del número, no el número visible.
