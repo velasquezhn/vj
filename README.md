@@ -43,6 +43,7 @@ Copie `.env.example`; nunca versione `.env` ni credenciales.
 - `WHATSAPP_PHONE_NUMBER_ID`: ID del número, no el número visible.
 - `WHATSAPP_VERIFY_TOKEN`: valor aleatorio elegido por el propietario.
 - `META_APP_SECRET`: secreto para validar `X-Hub-Signature-256`.
+- `OPENWEATHER_API_KEY`: opcional; habilita el pronóstico del menú sin guardar la clave en el código.
 
 ## Configuración de Meta
 
@@ -55,6 +56,12 @@ Copie `.env.example`; nunca versione `.env` ni credenciales.
 7. Apruebe plantillas para conversaciones iniciadas por la empresa fuera de la ventana permitida.
 
 El webhook procesa texto, botones, listas, imágenes, documentos y estados. Los IDs repetidos se descartan durante 24 horas por instancia. Los errores Meta `429` y `5xx` se marcan como reintentables.
+
+### Experiencia interactiva
+
+El menú principal, los alojamientos y las experiencias usan listas interactivas oficiales de Meta. La confirmación de fechas, la aceptación de condiciones y las acciones posteriores usan botones de respuesta. Los identificadores de botones se convierten a comandos internos estables, por lo que las respuestas numéricas escritas siguen siendo compatibles. Si Meta no acepta temporalmente un mensaje interactivo, el bot envía automáticamente una alternativa en texto.
+
+Los mensajes interactivos solo pueden enviarse dentro de la ventana de atención iniciada por el huésped. Para iniciar conversaciones fuera de esa ventana se debe crear y aprobar una plantilla en WhatsApp Manager; las plantillas no se usan para navegar los menús.
 
 ## Base de datos y Docker
 

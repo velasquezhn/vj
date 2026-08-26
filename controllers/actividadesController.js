@@ -186,8 +186,15 @@ const sendActividadDetails = async (bot, remitente, seleccion, establecerEstado 
     await sendActivityPhotos(bot, remitente, actividad.multimedia);
     
     // Enviar menú post-actividad después de las fotos
-    const menuPostActividad = `\n🔄 *¿Qué deseas hacer ahora?*\n1️⃣ Ver más actividades\n0️⃣ Menú principal`;
-    await safeSend(bot, remitente, menuPostActividad);
+    const { sendReplyButtons } = require('../services/whatsappInteractiveService');
+    await sendReplyButtons(bot, remitente, {
+      body: '¿Qué deseas hacer ahora?',
+      buttons: [
+        { id: 'activities_more', title: 'Más experiencias' },
+        { id: 'main_menu', title: 'Menú principal' }
+      ],
+      fallbackText: '🔄 *¿Qué deseas hacer ahora?*\n1. Ver más actividades\n0. Menú principal'
+    });
     
     // Establecer estado post-actividad si se proporciona la función
     if (establecerEstado && typeof establecerEstado === 'function') {

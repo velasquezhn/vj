@@ -44,6 +44,9 @@ class WhatsAppCloudService {
     const base = { messaging_product: 'whatsapp', recipient_type: 'individual', to: recipient };
 
     if (content.text) return this.request({ ...base, type: 'text', text: { body: content.text, preview_url: false } });
+    if (content.interactive) {
+      return this.request({ ...base, type: 'interactive', interactive: content.interactive });
+    }
     for (const type of ['image', 'video', 'document']) {
       if (content[type]) {
         const media = content[type];

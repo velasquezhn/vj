@@ -1,8 +1,9 @@
 const crypto = require('crypto');
 const express = require('express');
 const request = require('supertest');
-const { createWhatsAppWebhook, verifySignature, extractEvents } = require('../routes/whatsappWebhook');
+const { createWhatsAppWebhook, verifySignature, extractEvents, messageText, normalizeInteractiveReply } = require('../routes/whatsappWebhook');
 const { WhatsAppCloudService, normalizeRecipient } = require('../services/whatsappCloudService');
+const { sendReplyButtons, sendList } = require('../services/whatsappInteractiveService');
 
 const config = {
   apiVersion: 'v26.0', accessToken: 'test-token', phoneNumberId: '12345',
@@ -42,6 +43,55 @@ describe('WhatsApp Business Cloud API', () => {
     await client.sendMessage('+504 9999-0000@s.whatsapp.net', { text: 'Hola' });
     expect(normalizeRecipient('+504 9999-0000@s.whatsapp.net')).toBe('50499990000');
     expect(http.post).toHaveBeenCalledWith('/12345/messages', expect.objectContaining({ to: '50499990000', type: 'text' }));
+  });
+
+  test('construye mensajes interactivos oficiales de Meta', async () => {
+    const http = { post: jest.fn().mockResolvedValue({ data: { messages: [{ id: 'wamid.interactive' }] } }) };
+    const client = new WhatsAppCloudService({ config, http });
+    await client.sendMessage('50499990000', {
+      interactive: {
+        type: 'button', body: { text: '¿Deseas reservar?' },
+        action: { buttons: [{ type: 'reply', reply: { id: 'reservation_start', title: 'Reservar' } }] }
+      }
+    });
+    expect(http.post).toHaveBeenCalledWith('/12345/messages', expect.objectContaining({
+      type: 'interactive',
+      interactive: expect.objectContaining({ type: 'button' })
+    }));
+  });
+
+  test('interpreta respuestas de botones y listas como comandos del flujo existente', () => {
+    expect(messageText({ interactive: { list_reply: { id: 'main_2', title: 'Reservar ahora' } } })).toBe('2');
+    expect(messageText({ interactive: { button_reply: { id: 'dates_yes', title: 'Sí, confirmar' } } })).toBe('sí');
+    expect(normalizeInteractiveReply('detail_menu')).toBe('0');
+    expect(normalizeInteractiveReply('texto-libre')).toBe('texto-libre');
+  });
+
+  test('limita botones y usa respaldo de texto si Meta rechaza el interactivo', async () => {
+    const bot = { sendMessage: jest.fn().mockRejectedValueOnce(new Error('unsupported')).mockResolvedValueOnce({ ok: true }) };
+    await sendReplyButtons(bot, '50499990000', {
+      body: 'Elige',
+      buttons: [
+        { id: '1', title: 'Uno' }, { id: '2', title: 'Dos' },
+        { id: '3', title: 'Tres' }, { id: '4', title: 'Cuatro' }
+      ]
+    });
+    expect(bot.sendMessage.mock.calls[0][1].interactive.action.buttons).toHaveLength(3);
+    expect(bot.sendMessage.mock.calls[1][1].text).toContain('1. Uno');
+  });
+
+  test('construye listas con identificadores estables', async () => {
+    const bot = { sendMessage: jest.fn().mockResolvedValue({ ok: true }) };
+    await sendList(bot, '50499990000', {
+      body: 'Menú', buttonText: 'Ver opciones',
+      sections: [{ title: 'Servicios', rows: [{ id: 'main_1', title: 'Alojamientos', description: 'Ver cabañas' }] }]
+    });
+    expect(bot.sendMessage).toHaveBeenCalledWith('50499990000', {
+      interactive: expect.objectContaining({
+        type: 'list',
+        action: expect.objectContaining({ sections: expect.any(Array) })
+      })
+    });
   });
 
   test('reintenta errores temporales de Meta sin reintentar errores permanentes', async () => {

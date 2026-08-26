@@ -5,8 +5,9 @@ const { sendShareExperienceInstructions } = require('../routes/shareExperience')
 // const { manejarPostReserva } = require('../routes/postReservaHandler'); // TEMPORALMENTE COMENTADO
 const { extraerTelefono } = require('../utils/telefonoUtils');
 const { sendMessageWithDelay } = require('../utils/messageDelayUtils');
+const { enviarMenuActividades } = require('../services/messagingService');
 
-const weatherModule = new WeatherModule('5a9417f67be807a6e981ec69173924ac');
+const weatherModule = new WeatherModule(process.env.OPENWEATHER_API_KEY);
 
 // Estados constantes
 const STATES = {
@@ -117,9 +118,7 @@ async function handleMainMenuOptions(bot, remitente, mensaje, establecerEstado) 
       break;
 
     case '3': // Actividades
-      const menuActividades = await generateDynamicMenu('actividades');
-      await safeSend(bot, remitente, menuActividades);
-      await establecerEstado(remitente, STATES.ACTIVITIES);
+      await enviarMenuActividades(bot, remitente);
       break;
 
     case '4': // Contacto

@@ -14,6 +14,7 @@ const {
   validateReservation
 } = require('../../utils/validation');
 const logger = require('../../config/logger');
+const { sendReplyButtons } = require('../../services/whatsappInteractiveService');
 
 // Funciones auxiliares para mejorar la legibilidad
 
@@ -117,11 +118,19 @@ async function handleReservaState(bot, remitente, mensajeTexto, estado, datos, m
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ¿Son correctas estas fechas?
+Selecciona una opción para continuar.`;
 
-✅ Escribe *"SÍ"* para confirmar
-❌ Escribe *"NO"* para cambiar`;
-
-                await bot.sendMessage(remitente, { text: confirmacionMensaje });
+                await sendReplyButtons(bot, remitente, {
+                    header: 'Confirma tus fechas',
+                    body: confirmacionMensaje,
+                    footer: 'Podrás cambiarlas antes de reservar',
+                    buttons: [
+                        { id: 'dates_yes', title: 'Sí, confirmar' },
+                        { id: 'dates_no', title: 'Cambiar fechas' },
+                        { id: 'main_menu', title: 'Menú principal' }
+                    ],
+                    fallbackText: `${confirmacionMensaje}\n\n✅ Escribe *"SÍ"* para confirmar\n❌ Escribe *"NO"* para cambiar`
+                });
                 await establecerEstado(remitente, ESTADOS_RESERVA.CONFIRMAR_FECHAS, datosActualizados);
                 
                 logger.info('Fechas procesadas correctamente', {
@@ -273,10 +282,18 @@ async function handleReservaState(bot, remitente, mensajeTexto, estado, datos, m
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-📄 *¿Aceptas las condiciones de uso?* (responde *sí* o *no*)`;
+📄 *¿Aceptas las condiciones de uso?*`;
 
-                    await bot.sendMessage(remitente, { 
-                        text: resumenReserva
+                    await sendReplyButtons(bot, remitente, {
+                        header: 'Resumen de reserva',
+                        body: resumenReserva,
+                        footer: 'La disponibilidad se confirma al continuar',
+                        buttons: [
+                            { id: 'terms_accept', title: 'Acepto' },
+                            { id: 'terms_decline', title: 'No acepto' },
+                            { id: 'main_menu', title: 'Menú principal' }
+                        ],
+                        fallbackText: `${resumenReserva}\n\nResponde *sí* para aceptar o *no* para rechazar.`
                     });
                     
                     await establecerEstado(remitente, ESTADOS_RESERVA.CONDICIONES, {

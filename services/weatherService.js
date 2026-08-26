@@ -60,6 +60,12 @@ class WeatherModule {
     // Función principal para obtener el pronóstico
     async getWeatherForecast() {
         try {
+            if (!this.apiKey) {
+                return {
+                    success: false,
+                    message: '🌦️ El pronóstico no está disponible temporalmente. Nuestro equipo puede orientarte sobre el clima de Tela.'
+                };
+            }
             // Obtener clima actual
             const currentWeatherUrl = `${this.baseUrl}/weather?lat=${this.coordinates.lat}&lon=${this.coordinates.lon}&appid=${this.apiKey}&units=metric&lang=es`;
             

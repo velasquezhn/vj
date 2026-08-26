@@ -29,9 +29,23 @@ function extractEvents(payload) {
   return events;
 }
 
+function normalizeInteractiveReply(value) {
+  const reply = String(value || '').trim();
+  const numbered = reply.match(/^(?:main|cabin|activity|post)_(\d+)$/);
+  if (numbered) return numbered[1];
+  const commands = {
+    detail_back: '1', detail_reserve: '2', detail_menu: '0',
+    dates_yes: 'sí', dates_no: 'no', terms_accept: 'sí', terms_decline: 'no',
+    activities_more: '1', main_menu: 'menu', reservation_start: '2'
+  };
+  return commands[reply] || reply;
+}
+
 function messageText(message) {
-  return message.text?.body || message.button?.text || message.interactive?.button_reply?.title ||
-    message.interactive?.list_reply?.title || message.image?.caption || message.document?.caption || '';
+  const interactiveId = message.interactive?.button_reply?.id || message.interactive?.list_reply?.id;
+  if (interactiveId) return normalizeInteractiveReply(interactiveId);
+  return message.text?.body || message.button?.payload || message.button?.text ||
+    message.image?.caption || message.document?.caption || '';
 }
 
 function createEventStore() {
@@ -118,4 +132,4 @@ function createWhatsAppWebhook(options = {}) {
   return router;
 }
 
-module.exports = { createWhatsAppWebhook, verifySignature, extractEvents, createEventStore };
+module.exports = { createWhatsAppWebhook, verifySignature, extractEvents, createEventStore, messageText, normalizeInteractiveReply };

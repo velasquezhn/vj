@@ -2,7 +2,9 @@ const logger = require('../config/logger');
 const constants = require('../controllers/constants');
 const { establecerEstado } = require('./stateService');
 const { loadMenuCabinTypes } = require('./menuCabinTypesService');
+const { loadMenuActivities } = require('./menuActivitiesService');
 const { isValidUrl } = require('../utils/utils');
+const { sendReplyButtons, sendList } = require('./whatsappInteractiveService');
 
 async function enviarMenuPrincipal(bot, remitente) {
     const GRUPO_JID = '120363420483868468@g.us'; // Ensure this matches your group JID
@@ -13,7 +15,27 @@ async function enviarMenuPrincipal(bot, remitente) {
     }
     try {
         await establecerEstado(remitente, 'MENU_PRINCIPAL');
-        await bot.sendMessage(remitente, { text: constants.MENU_PRINCIPAL });
+        await sendList(bot, remitente, {
+            header: 'Villas Julie',
+            body: '¡Hola! Te ayudamos a planificar tu estadía frente al mar. ¿Qué deseas hacer?',
+            footer: 'Puedes escribir “menú” en cualquier momento',
+            buttonText: 'Ver opciones',
+            sections: [{
+                title: 'Servicios',
+                rows: [
+                    { id: 'main_1', title: '🏡 Alojamientos', description: 'Tipos de cabañas, capacidad y precios' },
+                    { id: 'main_2', title: '📅 Reservar ahora', description: 'Consulta fechas y crea tu reserva' },
+                    { id: 'main_3', title: '🌴 Experiencias', description: 'Actividades disponibles en la zona' },
+                    { id: 'main_4', title: '📲 Contacto', description: 'Habla con nuestro equipo' },
+                    { id: 'main_5', title: '🌦️ Clima', description: 'Pronóstico para tu visita' },
+                    { id: 'main_6', title: '❓ Preguntas frecuentes', description: 'Horarios, servicios y pagos' },
+                    { id: 'main_7', title: '📸 Compartir experiencia', description: 'Envíanos fotos de tu visita' },
+                    { id: 'main_8', title: '🛎️ Mi reserva', description: 'Pagos, cambios y asistencia' },
+                    { id: 'main_9', title: '💎 Beneficios', description: 'Programa de fidelidad' }
+                ]
+            }],
+            fallbackText: constants.MENU_PRINCIPAL
+        });
         logger.info(`Menú principal enviado a ${remitente}`);
     } catch (error) {
         logger.error(`Error enviando menú principal a ${remitente}: ${error.message}`, {
@@ -45,11 +67,25 @@ async function enviarMenuCabanas(bot, remitente) {
         
         await establecerEstado(remitente, 'LISTA_CABAÑAS');
         
-        const menuCabanas = `�️ Villas Julie - Opciones de Alojamiento\n\n` +
+        const menuCabanas = `🏡 *Villas Julie — Alojamientos*\n\n` +
             tipos.map((tipo, index) => `${index + 1}. ${tipo.nombre}`).join('\n') +
             `\n\n0. Volver ↩️\nPor favor selecciona el número de la opción que te interesa:`;
-        
-        await bot.sendMessage(remitente, { text: menuCabanas });
+
+        await sendList(bot, remitente, {
+            header: 'Nuestros alojamientos',
+            body: 'Selecciona un tipo para ver capacidad, precio, descripción y fotografías.',
+            footer: 'Precios por noche en lempiras',
+            buttonText: 'Ver alojamientos',
+            sections: [{
+                title: 'Tipos disponibles',
+                rows: tipos.slice(0, 10).map((tipo, index) => ({
+                    id: `cabin_${index + 1}`,
+                    title: `🏠 ${tipo.nombre}`,
+                    description: `${tipo.capacidad || '-'} personas · HNL ${Number(tipo.precio_noche || 0).toLocaleString()}`
+                }))
+            }],
+            fallbackText: menuCabanas
+        });
         logger.info(`Menú tipos de cabañas enviado a ${remitente} - ${tipos.length} opciones`);
         
     } catch (error) {
@@ -94,12 +130,11 @@ async function enviarDetalleCabaña(bot, remitente, seleccion) {
         const descripcion = tipo.descripcion || 'Descripción no disponible';
         const precio = tipo.precio_noche ? `HNL ${tipo.precio_noche.toLocaleString()}` : 'Precio no disponible';
         
-        let detalles = `🏖️ *${nombre}*\n\n` +
+        const detalles = `🏖️ *${nombre}*\n\n` +
             `👥 Capacidad: ${tipo.capacidad} personas\n` +
             `🛏️ Habitaciones: ${tipo.habitaciones} | 🚿 Baños: ${tipo.baños}\n` +
             `💰 Precio por noche: ${precio}\n\n` +
-            `${descripcion}\n\n` +
-            `🔄 ¿Siguiente paso?\n1. ← Ver todas las cabañas\n2. Reservar esta cabaña\n0. Menú principal 🏠`;
+            `${descripcion}`;
         
         try {
             const fotos = Array.isArray(tipo.fotos) ? tipo.fotos : (tipo.fotos ? JSON.parse(tipo.fotos) : []);
@@ -135,8 +170,15 @@ async function enviarDetalleCabaña(bot, remitente, seleccion) {
                 }
             }
             
-            await bot.sendMessage(remitente, { 
-                text: constants.SELECCION_DETALLE_OPCIONES
+            await sendReplyButtons(bot, remitente, {
+                body: '¿Qué deseas hacer ahora?',
+                footer: 'Villas Julie',
+                buttons: [
+                    { id: 'detail_back', title: 'Ver alojamientos' },
+                    { id: 'detail_reserve', title: 'Reservar' },
+                    { id: 'detail_menu', title: 'Menú principal' }
+                ],
+                fallbackText: constants.SELECCION_DETALLE_OPCIONES
             });
             
             logger.info(`Detalles de cabaña enviados a ${remitente}: ${nombre}`);
@@ -148,8 +190,14 @@ async function enviarDetalleCabaña(bot, remitente, seleccion) {
             });
             
             await bot.sendMessage(remitente, { text: detalles });
-            await bot.sendMessage(remitente, { 
-                text: constants.SELECCION_DETALLE_OPCIONES
+            await sendReplyButtons(bot, remitente, {
+                body: '¿Qué deseas hacer ahora?',
+                buttons: [
+                    { id: 'detail_back', title: 'Ver alojamientos' },
+                    { id: 'detail_reserve', title: 'Reservar' },
+                    { id: 'detail_menu', title: 'Menú principal' }
+                ],
+                fallbackText: constants.SELECCION_DETALLE_OPCIONES
             });
         }
         
@@ -173,8 +221,34 @@ async function enviarDetalleCabaña(bot, remitente, seleccion) {
     }
 }
 
+async function enviarMenuActividades(bot, remitente) {
+    const actividades = await loadMenuActivities();
+    const fallback = actividades.length
+        ? `🌴 *Experiencias locales*\n\n${actividades.map((item, index) => `${index + 1}. ${item.nombre}`).join('\n')}\n\n0. Menú principal`
+        : '⚠️ No hay experiencias disponibles en este momento.';
+    if (!actividades.length) return bot.sendMessage(remitente, { text: fallback });
+
+    await establecerEstado(remitente, 'actividades');
+    return sendList(bot, remitente, {
+        header: 'Experiencias locales',
+        body: 'Descubre actividades para disfrutar durante tu estadía.',
+        buttonText: 'Ver experiencias',
+        footer: 'Selecciona una para conocer los detalles',
+        sections: [{
+            title: 'Actividades',
+            rows: actividades.slice(0, 10).map((item, index) => ({
+                id: `activity_${index + 1}`,
+                title: item.nombre,
+                description: [item.categoria, item.duracion].filter(Boolean).join(' · ')
+            }))
+        }],
+        fallbackText: fallback
+    });
+}
+
 module.exports = {
     enviarMenuPrincipal,
     enviarMenuCabanas,
-    enviarDetalleCabaña
+    enviarDetalleCabaña,
+    enviarMenuActividades
 };
