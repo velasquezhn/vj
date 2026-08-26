@@ -4,7 +4,7 @@ Backend Node.js para reservas, panel administrativo y mensajería mediante **Wha
 
 ## Requisitos e instalación
 
-- Node.js 20 o 22 (recomendado: 22 LTS), pnpm 10+ mediante Corepack y SQLite.
+- Node.js 20 o 22 (recomendado: 22 LTS), pnpm 10+ mediante Corepack y SQLite. La imagen de producción usa Node.js 22 sobre Debian 13 para mantener compatibilidad con el módulo nativo de SQLite.
 - Un volumen persistente para una sola réplica.
 - Aplicación Meta Business, número registrado y URL HTTPS pública.
 

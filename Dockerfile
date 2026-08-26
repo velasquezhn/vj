@@ -1,10 +1,10 @@
-FROM node:22-bookworm-slim AS dependencies
+FROM node:22-trixie-slim AS dependencies
 WORKDIR /app
 RUN corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile --prod
 
-FROM node:22-bookworm-slim
+FROM node:22-trixie-slim
 ENV NODE_ENV=production
 WORKDIR /app
 RUN corepack enable && useradd --create-home --uid 10001 appuser
