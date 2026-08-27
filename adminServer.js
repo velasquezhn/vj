@@ -884,6 +884,12 @@ app.get('/admin/backup/list', authenticateToken, authorizeRole('superadmin'), as
   }
 });
 
+app.get('/admin/backup/download/:filename', authenticateToken, authorizeRole('superadmin'), async (req, res) => {
+  const backupPath = backupService.resolveBackupPath(req.params.filename);
+  if (!backupPath) return res.status(404).json({ success: false, message: 'Backup no encontrado' });
+  return res.download(backupPath, path.basename(backupPath));
+});
+
 /**
  * @swagger
  * /admin/backup/create:

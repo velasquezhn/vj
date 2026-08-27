@@ -16,6 +16,7 @@ const path = require('path');
 const zlib = require('zlib');
 const sqlite3 = require('sqlite3').verbose();
 const winston = require('winston');
+const { Dropbox } = require('dropbox');
 
 // Configuración desde variables de entorno
 const CONFIG = {
@@ -25,7 +26,9 @@ const CONFIG = {
   backupDir: path.resolve(process.env.BACKUP_DIR || './backups'),
   dbPath: path.resolve(process.env.DB_PATH || './data/bot_database.sqlite'),
   compression: process.env.BACKUP_COMPRESSION === 'true',
-  verify: process.env.BACKUP_VERIFY === 'true'
+  verify: process.env.BACKUP_VERIFY === 'true',
+  dropboxAccessToken: process.env.BACKUP_DROPBOX_ACCESS_TOKEN || '',
+  dropboxFolder: `/${String(process.env.BACKUP_DROPBOX_FOLDER || 'VillasJulie/backups').replace(/^\/+|\/+$/g, '')}`
 };
 fs.mkdirSync(CONFIG.backupDir, { recursive: true });
 
@@ -52,6 +55,8 @@ class BackupService {
   constructor() {
     this.isRunning = false;
     this.intervalId = null;
+    this.lastOffsiteUpload = null;
+    this.lastOffsiteError = null;
     this.initializeBackupDirectory();
   }
 
@@ -188,6 +193,8 @@ class BackupService {
         duration: `${duration}ms`
       });
 
+      if (CONFIG.dropboxAccessToken) await this.uploadToDropbox(backupPath, backupFilename);
+
       // Limpiar backups antiguos
       await this.cleanOldBackups();
 
@@ -201,6 +208,27 @@ class BackupService {
       return false;
     } finally {
       this.isRunning = false;
+    }
+  }
+
+  async uploadToDropbox(backupPath, backupFilename) {
+    try {
+      const client = new Dropbox({ accessToken: CONFIG.dropboxAccessToken, fetch });
+      await client.filesUpload({
+        path: `${CONFIG.dropboxFolder}/${backupFilename}`,
+        contents: fs.readFileSync(backupPath),
+        mode: { '.tag': 'overwrite' },
+        autorename: false,
+        mute: true
+      });
+      this.lastOffsiteUpload = new Date().toISOString();
+      this.lastOffsiteError = null;
+      logger.info('Backup externo completado', { provider: 'dropbox', file: backupFilename });
+      return true;
+    } catch (error) {
+      this.lastOffsiteError = error?.error?.error_summary || error.message || 'UPLOAD_FAILED';
+      logger.error('No se pudo copiar el backup fuera de Railway', { provider: 'dropbox', code: error?.status || error?.error?.error_summary || 'UPLOAD_FAILED' });
+      return false;
     }
   }
 
@@ -317,6 +345,14 @@ class BackupService {
       logger.error('Error listando backups', { error: error.message });
       return [];
     }
+  }
+
+  resolveBackupPath(backupFilename) {
+    const safeFilename = path.basename(String(backupFilename || ''));
+    if (safeFilename !== backupFilename || !/^backup_[A-Za-z0-9_.-]+\.sqlite(?:\.gz)?$/.test(safeFilename)) return null;
+    const backupPath = path.resolve(CONFIG.backupDir, safeFilename);
+    if (path.dirname(backupPath) !== path.resolve(CONFIG.backupDir) || !fs.existsSync(backupPath)) return null;
+    return backupPath;
   }
 
   /**
@@ -436,7 +472,20 @@ class BackupService {
     return {
       enabled: CONFIG.enabled,
       isRunning: this.isRunning,
-      config: CONFIG,
+      config: {
+        enabled: CONFIG.enabled,
+        intervalHours: CONFIG.intervalHours,
+        retentionDays: CONFIG.retentionDays,
+        compression: CONFIG.compression,
+        verify: CONFIG.verify,
+        offsiteEnabled: Boolean(CONFIG.dropboxAccessToken),
+        offsiteProvider: CONFIG.dropboxAccessToken ? 'dropbox' : null
+      },
+      offsite: {
+        enabled: Boolean(CONFIG.dropboxAccessToken),
+        lastUpload: this.lastOffsiteUpload,
+        lastError: this.lastOffsiteError ? 'OFFSITE_UPLOAD_FAILED' : null
+      },
       backups: {
         count: backups.length,
         totalSize: `${totalSize.toFixed(2)} MB`,

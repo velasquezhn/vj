@@ -132,9 +132,11 @@ BACKUP_DIR=/app/storage/backups
 LOG_DIR=/app/storage/logs
 BACKUP_ENABLED=true
 BACKUP_INTERVAL_HOURS=24
-BACKUP_RETENTION_DAYS=7
+BACKUP_RETENTION_DAYS=30
 BACKUP_VERIFY=true
 ```
+
+El plan Hobby de Railway no incluye snapshots del volumen. El backend crea backups SQLite consistentes en el volumen y el superadministrador puede descargarlos desde el panel. Para una copia automática fuera de Railway sin subir al plan Pro, cree una app de Dropbox con acceso limitado, guarde el token únicamente como `BACKUP_DROPBOX_ACCESS_TOKEN` en Railway y use `BACKUP_DROPBOX_FOLDER=VillasJulie/backups`. El token nunca aparece en el panel ni en los logs.
 
 4. Defina `CORS_ORIGIN` con la URL exacta del frontend de Cloudflare Pages, sin `/` final.
 5. Genere el dominio público y compruebe `https://DOMINIO/health` y `https://DOMINIO/ready`.
