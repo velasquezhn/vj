@@ -13,6 +13,8 @@ const {
 } = require('../../utils/validation');
 const logger = require('../../config/logger');
 const { sendReplyButtons } = require('../../services/whatsappInteractiveService');
+const { enviarMenuPrincipal } = require('../../services/messagingService');
+const { reservationStart, NAVIGATION_FOOTER } = require('../../services/whatsappMessages');
 
 // Funciones auxiliares para mejorar la legibilidad
 
@@ -48,8 +50,6 @@ const formatearFechaCompleta = (fechaStr) => {
 
 async function handleReservaState(bot, remitente, mensajeTexto, estado, datos, mensaje) {
     try {
-        console.log(`[TRACE] handleReservaState called with estado=${estado}, datos=`, datos);
-        console.log(`[DEBUG] Mensaje recibido para fechas: '${mensajeTexto}'`);
         switch (estado) {
             case ESTADOS_RESERVA.FECHAS: {
                 logger.info('Procesando fechas de reserva', { 
@@ -61,12 +61,8 @@ async function handleReservaState(bot, remitente, mensajeTexto, estado, datos, m
                 const validacionFechas = parseDateRange(mensajeTexto);
                 
                 if (validacionFechas.error) {
-                    await bot.sendMessage(remitente, { 
-                        text: `❌ ${validacionFechas.error}\n\n💡 *Formatos aceptados:*\n` +
-                              `📅 15/08/2025 al 18/08/2025\n` +
-                              `📅 15 al 18 de agosto\n` +
-                              `📅 del 15 al 18 de agosto de 2025\n\n` +
-                              `🔄 *Intenta nuevamente con cualquiera de estos formatos*`
+                    await bot.sendMessage(remitente, {
+                        text: `No pude interpretar las fechas: ${validacionFechas.error}\n\n${reservationStart()}`
                     });
                     logger.warn('Fechas inválidas rechazadas', {
                         userId: remitente,
@@ -143,13 +139,13 @@ Selecciona una opción para continuar.`;
                 const respuesta = mensajeTexto.trim().toLowerCase();
                 if (respuesta === 'sí' || respuesta === 'si') {
                     // Continúa el flujo, no vuelve a preguntar fechas
-                    await bot.sendMessage(remitente, { text: '✅ *¡Fechas confirmadas!*\n📝 *Por favor, dime tu nombre completo:*' });
+                    await bot.sendMessage(remitente, { text: '✅ Fechas confirmadas.\n\n¿Cuál es tu nombre completo?\n\nEscribe *volver* para cambiar las fechas o *cancelar* para salir.' });
                     await establecerEstado(remitente, ESTADOS_RESERVA.NOMBRE, datos);
                 } else if (respuesta === 'no') {
-                    await bot.sendMessage(remitente, { text: '🔄 *De acuerdo, volvamos a empezar.*\n\n📅 *Por favor, ingresa nuevamente las fechas de tu reserva.*\n\n💡 *Ejemplo:* 20/08/2025 al 25/08/2025' });
+                    await bot.sendMessage(remitente, { text: reservationStart() });
                     await establecerEstado(remitente, ESTADOS_RESERVA.FECHAS, {});
                 } else {
-                    await bot.sendMessage(remitente, { text: '❓ *No entendí tu respuesta.*\n\n✅ Escribe *"SÍ"* para confirmar las fechas\n❌ Escribe *"NO"* para cambiar las fechas' });
+                    await bot.sendMessage(remitente, { text: 'No entendí la respuesta. Usa los botones o escribe *sí* para confirmar y *no* para cambiar las fechas.' });
                 }
                 break;
             }
@@ -191,7 +187,7 @@ Selecciona una opción para continuar.`;
                     });
                 }
                 
-                await bot.sendMessage(remitente, { text: '👥 *¿Cuántas personas serán?*\n\n💡 *Ingresa solo el número (ejemplo: 4)*' });
+                await bot.sendMessage(remitente, { text: '👥 ¿Cuántas personas se hospedarán?\n\nResponde solo con el número, por ejemplo: *4*.\nEscribe *volver* para reiniciar las fechas o *cancelar* para salir.' });
                 
                 logger.info('Nombre validado y guardado', {
                     userId: remitente,
@@ -250,10 +246,6 @@ Selecciona una opción para continuar.`;
                     assignedCabinType: tipoCabana
                 });
                 
-                await bot.sendMessage(remitente, {
-                    text: `🏠 *Asignado automáticamente:*
-*${tipoCabana.toUpperCase()}* para ${cantidad} persona(s)`
-                });
                 let cabanaDisponible;
                 let fechaInicio;
                 let fechaFin;
@@ -263,7 +255,6 @@ Selecciona una opción para continuar.`;
                         datos.fechaEntrada, 
                         datos.noches
                     );
-                    console.log(`[TRACE] Calculated precioTotal=${precioTotal}`);
                     
                     // Formatear fechas para mejor presentación
                     const fechaEntradaFormatted = formatearFechaCompleta(datos.fechaEntrada);
@@ -279,7 +270,7 @@ Selecciona una opción para continuar.`;
 🌙 *Noches:* ${datos.noches}
 👥 *Personas:* ${cantidad}
 🏠 *Alojamiento:* ${tipoCabana.toUpperCase()}
-💵 *Total:* Lmps. ${precioTotal.toLocaleString()}
+💵 *Total:* HNL ${precioTotal.toLocaleString('es-HN')}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -313,11 +304,16 @@ Selecciona una opción para continuar.`;
             }
 
             case ESTADOS_RESERVA.CONDICIONES: {
-                const aceptado = /^s[iíí]$/i.test(mensajeTexto.trim());
-                
+                const respuesta = mensajeTexto.trim().toLowerCase();
+                const aceptado = /^s[ií]$/i.test(respuesta);
+
                 if (!aceptado) {
+                    if (respuesta === 'no') {
+                        await enviarMenuPrincipal(bot, remitente);
+                        return;
+                    }
                     await bot.sendMessage(remitente, { 
-                        text: '📝 Debes aceptar las condiciones para continuar\nResponde *"sí"* si estás de acuerdo' 
+                        text: 'Usa los botones o responde *sí* para aceptar y continuar, o *no* para cancelar la solicitud.'
                     });
                     return;
                 }
@@ -345,7 +341,7 @@ Selecciona una opción para continuar.`;
                         await bot.sendMessage(remitente, { 
                             text: `❌ Lo sentimos, no hay cabañas tipo *${tipoNombre}* disponibles para las fechas *${datos.fechaEntrada} - ${datos.fechaSalida}*.\n\n` +
                                   `📅 Por favor selecciona otras fechas o consulta disponibilidad de otros tipos de cabaña.\n\n` +
-                                  `Para empezar de nuevo, escribe *"hola"*.`
+                                  `Escribe *menú* para comenzar otra solicitud.`
                         });
                         
                         // Limpiar estado para que pueda empezar de nuevo
@@ -354,8 +350,6 @@ Selecciona una opción para continuar.`;
                     }
                     
                     // HAY DISPONIBILIDAD - Continuar con la reserva
-                    console.log(`✅ Cabaña ${datos.alojamiento} disponible: ${cabanaDisponible.name}`);
-                    
                 } catch (error) {
                     console.error('Error verificando disponibilidad:', error);
                     await bot.sendMessage(remitente, { 
@@ -424,30 +418,22 @@ Selecciona una opción para continuar.`;
                     await establecerEstado(remitente, 'MENU_PRINCIPAL', {});
                     return;
                 }
-                console.log('Mensaje completo recibido en ESPERANDO_PAGO:', JSON.stringify(mensaje));
-                console.log('Mensaje keys:', Object.keys(mensaje));
-                console.log('Mensaje tiene imageMessage:', mensaje.hasOwnProperty('imageMessage'));
-                console.log('Mensaje tiene documentMessage:', mensaje.hasOwnProperty('documentMessage'));
                 const esComprobante = mensaje.imageMessage || mensaje.documentMessage;
-                console.log('ESPERANDO_PAGO - esComprobante:', esComprobante);
                 if (!esComprobante) {
                     await bot.sendMessage(remitente, { 
-                        text: '📎 Por favor envía una *foto* o *PDF* del comprobante' 
+                        text: `📎 Envía una *foto* o un archivo *PDF* del comprobante.\n\n${NAVIGATION_FOOTER}.`
                     });
                     return;
                 }
                 
                 try {
-                    console.log('Descargando media del mensaje...');
                     const { buffer, mimetype, nombreArchivo } = await descargarMedia(mensaje);
-                    console.log('Media descargada:', { mimetype, nombreArchivo, bufferLength: buffer.length });
                     const reservaActualizada = await guardarComprobante(
                         datos.reservaId,
                         buffer,
                         mimetype,
                         nombreArchivo
                     );
-                    console.log('Reserva actualizada con comprobante:', reservaActualizada);
                     await bot.sendMessage(remitente, {
                         text: `✅ *COMPROBANTE RECIBIDO*\n\nSolicitud: *${datos.confirmationCode || `VJ-${String(datos.reservaId).padStart(6, '0')}`}*\n\nEl administrador debe verificar ahora el pago. Te notificaremos por este chat cuando la reserva tenga la confirmación final.`
                     });
@@ -476,7 +462,7 @@ Selecciona una opción para continuar.`;
             }
         }
     } catch (error) {
-        console.error('Error en handleReservaState:', error);
+        logger.error('Error en el flujo de reserva', { userId: remitente, estado, error: error.message });
         await bot.sendMessage(remitente, { 
             text: '⚠️ Ocurrió un error inesperado. Por favor intenta nuevamente' 
         });

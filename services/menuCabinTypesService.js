@@ -1,5 +1,3 @@
-const moment = require('moment');
-require('moment/locale/es');
 const db = require('../db');
 
 /**
@@ -191,52 +189,6 @@ const createCabinType = async (typeData) => {
   }
 };
 
-// Funciones de compatibilidad con el sistema existente
-const checkDisponibilidad = (cabaña, fechaEntrada, fechaSalida) => {
-  // Para tipos de menú, siempre devolvemos true
-  // La verificación real se hará con las cabañas físicas
-  return true;
-};
-
-const parsearFechas = (texto) => {
-  moment.locale('es');
-  
-  const patterns = [
-    /(\d{1,2})[\s\-]*(?:de\s+)?(\w+)[\s\-]*(?:a|al|\-)\s*(\d{1,2})[\s\-]*(?:de\s+)?(\w+)/i,
-    /(\d{1,2})\/(\d{1,2})[\s\-]*(?:a|al|\-)\s*(\d{1,2})\/(\d{1,2})/,
-    /(\d{1,2})[\s\-]*(\d{1,2})[\s\-]*(?:a|al|\-)\s*(\d{1,2})[\s\-]*(\d{1,2})/
-  ];
-
-  for (const pattern of patterns) {
-    const match = texto.match(pattern);
-    if (match) {
-      try {
-        if (pattern.source.includes('\\w+')) {
-          const [, diaInicio, mesInicio, diaFin, mesFin] = match;
-          const entrada = moment(`${diaInicio} ${mesInicio} 2025`, 'DD MMMM YYYY');
-          const salida = moment(`${diaFin} ${mesFin} 2025`, 'DD MMMM YYYY');
-          
-          if (entrada.isValid() && salida.isValid()) {
-            return { entrada, salida };
-          }
-        } else {
-          const [, d1, m1, d2, m2] = match;
-          const entrada = moment(`${d1}/${m1}/2025`, 'DD/MM/YYYY');
-          const salida = moment(`${d2}/${m2}/2025`, 'DD/MM/YYYY');
-          
-          if (entrada.isValid() && salida.isValid()) {
-            return { entrada, salida };
-          }
-        }
-      } catch (e) {
-        continue;
-      }
-    }
-  }
-  
-  return null;
-};
-
 module.exports = {
   // Función principal para el menú
   loadMenuCabinTypes,
@@ -246,12 +198,4 @@ module.exports = {
   toggleCabinType,
   updateCabinType,
   createCabinType,
-  
-  // Funciones de compatibilidad
-  checkDisponibilidad,
-  parsearFechas,
-  
-  // Alias para compatibilidad con código existente
-  loadCabañas: loadMenuCabinTypes,
-  loadTiposCabañas: loadMenuCabinTypes
 };

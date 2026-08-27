@@ -218,7 +218,7 @@ async function handleAdminMessage(bot, sender, text) {
 
   await bot.sendMessage(sender, {
     text: '🔐 *ADMINISTRACIÓN VILLAS JULIE*\n\n' +
-      'Recibirás aquí las solicitudes con comprobante.\n\n' +
+      'Recibirás aquí las solicitudes que esperan autorización de pago y las que tienen un comprobante pendiente de revisión.\n\n' +
       'Comandos de respaldo:\n' +
       '• /aprobar VJ-000001\n' +
       '• /rechazar VJ-000001 motivo\n' +

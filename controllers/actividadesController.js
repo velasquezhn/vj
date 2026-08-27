@@ -74,28 +74,6 @@ const generateActivityDetails = (actividad) => {
   return detalles;
 };
 
-// Función para enviar fotos de actividad
-const sendActivityPhotos = async (bot, remitente, multimedia) => {
-  if (!multimedia) return;
-  
-  try {
-    // Enviar foto principal
-    if (multimedia.fotoPrincipal) {
-      await bot.sendMessage(remitente, { image: { url: multimedia.fotoPrincipal } });
-    }
-    
-    // Enviar galería si existe
-    if (multimedia.galeria?.length > 0) {
-      for (const url of multimedia.galeria) {
-        await bot.sendMessage(remitente, { image: { url } });
-      }
-    }
-  } catch (error) {
-    console.error('Error enviando fotos de actividad:', error);
-    await safeSend(bot, remitente, '⚠️ No se pudieron cargar las fotos de la actividad');
-  }
-};
-
 // Handler para flujo de actividades
 const flowActividadesHandler = async (ctx, { flowDynamic, endFlow }) => {
   try {
@@ -167,33 +145,31 @@ const sendActividadDetails = async (bot, remitente, seleccion, establecerEstado 
     const actividad = actividades[seleccion - 1];
     const detalles = generateActivityDetails(actividad);
     
-    // Enviar foto principal como imagen con caption si existe
-    if (actividad.multimedia?.fotoPrincipal) {
+    const images = [
+      actividad.multimedia?.fotoPrincipal,
+      ...(Array.isArray(actividad.multimedia?.galeria) ? actividad.multimedia.galeria : [])
+    ].filter((url) => typeof url === 'string' && url.startsWith('https://'));
+    let galleryUrl = images[0];
+    if (images.length > 1) {
       try {
-        await bot.sendMessage(remitente, {
-          image: { url: actividad.multimedia.fotoPrincipal },
-          caption: detalles
-        });
+        const { buildCabinGalleryUrl } = require('../services/whatsappCabinGalleryService');
+        galleryUrl = await buildCabinGalleryUrl({ type_key: `actividad-${actividad.id || seleccion}` }, images.slice(0, 4));
       } catch (error) {
-        console.error('Error enviando imagen principal, enviando solo texto:', error);
-        await safeSend(bot, remitente, detalles);
+        console.warn('No se pudo crear la galería unificada de la actividad:', error.message);
       }
-    } else {
-      await safeSend(bot, remitente, detalles);
     }
-    
-    // Enviar fotos adicionales de la galería
-    await sendActivityPhotos(bot, remitente, actividad.multimedia);
-    
-    // Enviar menú post-actividad después de las fotos
+
+    // Meta no admite álbum y botones en un único mensaje. Se compone una sola
+    // imagen con hasta cuatro fotos y se usa como encabezado interactivo.
     const { sendReplyButtons } = require('../services/whatsappInteractiveService');
     await sendReplyButtons(bot, remitente, {
-      body: '¿Qué deseas hacer ahora?',
+      ...(galleryUrl ? { headerImage: { url: galleryUrl } } : {}),
+      body: `${detalles}\n\n¿Qué deseas hacer ahora?`,
       buttons: [
         { id: 'activities_more', title: 'Más experiencias' },
         { id: 'main_menu', title: 'Menú principal' }
       ],
-      fallbackText: '🔄 *¿Qué deseas hacer ahora?*\n1. Ver más actividades\n0. Menú principal'
+      fallbackText: `${detalles}\n\n1. Ver más experiencias\n0. Menú principal`
     });
     
     // Establecer estado post-actividad si se proporciona la función

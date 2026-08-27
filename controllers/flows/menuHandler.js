@@ -2,12 +2,12 @@ const { enviarMenuPrincipal, enviarMenuCabanas, enviarDetalleCabaña } = require
 const { handleMainMenuOptions } = require('../mainMenuHandler');
 const { exportarReservasAExcel } = require('../../services/reservaExportService');
 const logger = require('../../config/logger');
+const { reservationStart } = require('../../services/whatsappMessages');
 
 // Handlers específicos para cada estado
 async function handleMenuPrincipal(bot, remitente, mensajeTexto, establecerEstado) {
     if (mensajeTexto.trim() === '1') {
         await enviarMenuCabanas(bot, remitente);
-        establecerEstado('LISTA_CABAÑAS');
     } else if (mensajeTexto.trim().toLowerCase() === 'exportar reservas') {
         try {
             const rutaArchivo = await exportarReservasAExcel();
@@ -28,19 +28,14 @@ async function handleMenuPrincipal(bot, remitente, mensajeTexto, establecerEstad
 async function handleListaCabanas(bot, remitente, mensajeTexto, establecerEstado) {
     if (mensajeTexto.trim() === '0') {
         await enviarMenuPrincipal(bot, remitente);
-        establecerEstado('MENU_PRINCIPAL');
         return;
     }
 
     const seleccion = parseInt(mensajeTexto.trim());
     if (isNaN(seleccion)) {
-        await bot.sendMessage(remitente, {
-            text: '⚠️ Por favor ingresa solo el número de la cabaña.'
-        });
         await enviarMenuCabanas(bot, remitente);
     } else {
         await enviarDetalleCabaña(bot, remitente, seleccion);
-        establecerEstado('DETALLE_CABAÑA');
     }
 }
 
@@ -54,7 +49,6 @@ async function handleDetalleCabana(bot, remitente, mensajeTexto, establecerEstad
     switch (mensajeTexto.trim()) {
         case OPCIONES.VOLVER:
             await enviarMenuCabanas(bot, remitente);
-            establecerEstado('LISTA_CABAÑAS');
             break;
             
         case OPCIONES.RESERVAR:
@@ -64,19 +58,18 @@ async function handleDetalleCabana(bot, remitente, mensajeTexto, establecerEstad
                 const { ESTADOS_RESERVA } = require('../reservaConstants');
                 await establecerEstado(remitente, ESTADOS_RESERVA.FECHAS);
                 await bot.sendMessage(remitente, {
-                    text: 'Has seleccionado reservar una cabaña. Por favor ingresa las fechas de tu estadía (ej: "20/08/2025 - 25/08/2025"):'
+                    text: reservationStart()
                 });
             }
             break;
             
         case OPCIONES.MENU_PRINCIPAL:
             await enviarMenuPrincipal(bot, remitente);
-            establecerEstado('MENU_PRINCIPAL');
             break;
             
         default:
             await bot.sendMessage(remitente, {
-                text: '⚠️ Opción no válida. Por favor selecciona una opción del menú.'
+                text: 'No reconocí esa opción. Usa los botones o responde 1, 2 o 0. También puedes escribir “menú”.'
             });
             // Reenviar menú actual manteniendo el estado
             break;
@@ -99,11 +92,7 @@ async function handleMenuState(bot, remitente, mensajeTexto, estado, establecerE
         }
     } catch (error) {
         logger.error(`Error en handleMenuState: ${error.message}`, error);
-        await bot.sendMessage(remitente, {
-            text: '⚠️ Ocurrió un error inesperado. Reiniciando menú...'
-        });
         await enviarMenuPrincipal(bot, remitente);
-        establecerEstado('MENU_PRINCIPAL');
     }
 }
 

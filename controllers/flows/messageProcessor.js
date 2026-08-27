@@ -14,26 +14,26 @@ const alojamientosService = require('../../services/alojamientosService');
 const { extractMessageText } = require('./messageProcessorUtils');
 const { sendMessageWithDelay } = require('../../utils/messageDelayUtils');
 const { isAdminSender, handleAdminMessage } = require('../../services/whatsappAdminService');
+const { handleShareExperienceResponse } = require('../../routes/shareExperience');
+const { normalizeConversationInput, reservationStart } = require('../../services/whatsappMessages');
 // const { manejarPostReserva, manejarNoReserva, procesarComprobantePostReserva } = require('../../routes/postReservaHandler'); // TEMPORALMENTE COMENTADO
 
-/**
- * DEPRECATED: Usar sendMessageWithDelay de messageDelayUtils en su lugar
- * Genera un delay aleatorio entre 4 y 15 segundos para simular respuesta humana
- * y evitar bloqueos por envío masivo
- * @returns {Promise} Promise que se resuelve después del delay
- */
-async function randomDelay() {
-    const minDelay = 4000; // 4 segundos
-    const maxDelay = 15000; // 15 segundos
-    const delay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
-    
-    logger.info(`⏳ Aplicando delay aleatorio de ${(delay/1000).toFixed(1)} segundos para evitar bloqueos`);
-    
-    return new Promise(resolve => setTimeout(resolve, delay));
+async function handleBack(bot, remitente, estado) {
+    if (estado === 'LISTA_CABAÑAS') return enviarMenuPrincipal(bot, remitente);
+    if (estado === 'DETALLE_CABAÑA') {
+        const { enviarMenuCabanas } = require('../../services/messagingService');
+        return enviarMenuCabanas(bot, remitente);
+    }
+    if (estado === 'actividades' || estado === 'post_actividad') {
+        const { enviarMenuActividades } = require('../../services/messagingService');
+        return enviarMenuActividades(bot, remitente);
+    }
+    if (String(estado).startsWith('reservar_')) {
+        await establecerEstado(remitente, ESTADOS_RESERVA.FECHAS, {});
+        return bot.sendMessage(remitente, { text: reservationStart() });
+    }
+    return enviarMenuPrincipal(bot, remitente);
 }
-
-// NOTA: La función sendMessageWithDelay ya está importada de messageDelayUtils
-// Esta función local duplicada ha sido eliminada para evitar conflictos
 
 async function procesarMensaje(bot, remitente, mensaje, mensajeObj) {
     // Validación básica de remitente
@@ -43,9 +43,8 @@ async function procesarMensaje(bot, remitente, mensaje, mensajeObj) {
     }
 
     try {
-        const mensajeTexto = typeof mensaje === 'string'
-            ? mensaje.toLowerCase().trim()
-            : extractMessageText(mensajeObj);
+        const rawText = typeof mensaje === 'string' ? mensaje.trim() : extractMessageText(mensajeObj);
+        const mensajeTexto = normalizeConversationInput(rawText);
 
         // Los administradores autorizados usan un flujo privado de aprobación.
         // Se procesa antes del saludo para que los botones no abran el menú de huéspedes.
@@ -58,7 +57,7 @@ async function procesarMensaje(bot, remitente, mensaje, mensajeObj) {
             return;
         }
 
-        // Verificar si el usuario escribió "menu" - regresar al menú principal en cualquier momento
+        // Comandos globales disponibles en cualquier parte del flujo.
         if (mensajeTexto === 'menu') {
             await enviarMenuPrincipal(bot, remitente);
             return;
@@ -67,16 +66,21 @@ async function procesarMensaje(bot, remitente, mensaje, mensajeObj) {
         const estadoData = await obtenerEstado(remitente);
         const estado = estadoData.estado;
         const datos = estadoData.datos;
+
+        if (mensajeTexto === 'cancelar') {
+            await enviarMenuPrincipal(bot, remitente);
+            return;
+        }
+        if (mensajeTexto === 'volver') {
+            await handleBack(bot, remitente, estado);
+            return;
+        }
         
         logger.debug(`Procesando estado [${estado}] para ${remitente}`, {
             message: mensajeTexto
         });
 
-        // Log current user state for debugging
-        logger.info(`Usuario ${remitente} está en estado: ${estado}`);
-
-        // Log messageObj for debugging
-        logger.debug('Mensaje recibido completo:', mensajeObj);
+        logger.info('Mensaje de conversación procesado', { userId: remitente, estado });
 
         // Router de estados
         const mensajeReserva = mensajeObj?.message || mensaje;
@@ -86,6 +90,7 @@ async function procesarMensaje(bot, remitente, mensaje, mensajeObj) {
             DETALLE_CABAÑA: () => handleMenuState(bot, remitente, mensajeTexto, estado, establecerEstado),
             actividades: () => handleActividadesState(bot, remitente, mensajeTexto, establecerEstado),
             post_actividad: () => handlePostActividadState(bot, remitente, mensajeTexto, establecerEstado),
+            share_experience: () => handleShareExperienceResponse(bot, remitente, mensajeTexto, establecerEstado),
             // Flujo de reserva
             [ESTADOS_RESERVA.FECHAS]: () => handleReservaState(bot, remitente, mensajeTexto, estado, datos, mensajeReserva),
             [ESTADOS_RESERVA.CONFIRMAR_FECHAS]: () => handleReservaState(bot, remitente, mensajeTexto, estado, datos, mensajeReserva),
@@ -181,10 +186,7 @@ async function procesarMensaje(bot, remitente, mensaje, mensajeObj) {
             } else {
                 // Si el estado no es manejado, muestra advertencia y regresa al menú principal
                 logger.warn(`Estado no manejado: ${estado}`, { userId: remitente });
-                await sendMessageWithDelay(bot, remitente, {
-                    text: '⚠️ Estado no reconocido. Te regreso al menú principal.'
-                });
-                await establecerEstado(remitente, 'MENU_PRINCIPAL', {});
+                await enviarMenuPrincipal(bot, remitente);
             }
         }
     } catch (error) {
@@ -205,10 +207,6 @@ async function procesarMensaje(bot, remitente, mensaje, mensajeObj) {
                 });
                 // No resetear el estado
             } else {
-                await sendMessageWithDelay(bot, remitente, {
-                    text: '⚠️ Error procesando tu solicitud. Intenta nuevamente.'
-                });
-                establecerEstado(remitente, 'MENU_PRINCIPAL');
                 await enviarMenuPrincipal(bot, remitente);
             }
         } catch (fallbackError) {
@@ -413,16 +411,15 @@ async function handlePostActividadState(bot, remitente, mensajeTexto, establecer
     switch (mensaje) {
         case '1':
             // Ver más actividades - volver al menú de actividades
-            const { generateDynamicMenu } = require('../mainMenuHandler');
-            const menuActividades = await generateDynamicMenu('actividades');
-            await sendMessageWithDelay(bot, remitente, { text: menuActividades });
-            await establecerEstado(remitente, 'actividades');
+            {
+                const { enviarMenuActividades } = require('../../services/messagingService');
+                await enviarMenuActividades(bot, remitente);
+            }
             break;
             
         case '0':
             // Menú principal
-            const { handleMainMenu } = require('../mainMenuHandler');
-            await handleMainMenu(bot, remitente, 'menu');
+            await enviarMenuPrincipal(bot, remitente);
             break;
             
         default:

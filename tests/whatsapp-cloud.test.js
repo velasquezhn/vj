@@ -1,7 +1,7 @@
 const crypto = require('crypto');
 const express = require('express');
 const request = require('supertest');
-const { createWhatsAppWebhook, verifySignature, extractEvents, messageText, normalizeInteractiveReply } = require('../routes/whatsappWebhook');
+const { createWhatsAppWebhook, verifySignature, extractEvents, createSenderQueue, messageText, normalizeInteractiveReply } = require('../routes/whatsappWebhook');
 const { WhatsAppCloudService, normalizeRecipient } = require('../services/whatsappCloudService');
 const { sendReplyButtons, sendList } = require('../services/whatsappInteractiveService');
 const { parseReservationId, isAdminSender, reviewText } = require('../services/whatsappAdminService');
@@ -108,6 +108,61 @@ describe('WhatsApp Business Cloud API', () => {
         action: expect.objectContaining({ sections: expect.any(Array) })
       })
     });
+  });
+
+  test('respeta los límites de Meta en botones, listas y mensajes de texto', async () => {
+    const bot = { sendMessage: jest.fn().mockResolvedValue({ ok: true }) };
+    const rows = Array.from({ length: 15 }, (_, index) => ({
+      id: `option_${index}`,
+      title: `Opción ${index}`,
+      description: 'x'.repeat(100)
+    }));
+    await sendList(bot, '50499990000', {
+      body: 'Menú', buttonText: 'x'.repeat(30),
+      sections: [{ title: 'x'.repeat(40), rows }]
+    });
+    const interactive = bot.sendMessage.mock.calls[0][1].interactive;
+    expect(interactive.action.sections.flatMap((section) => section.rows)).toHaveLength(10);
+    expect(interactive.action.button.length).toBeLessThanOrEqual(20);
+    expect(interactive.action.sections[0].rows[0].description.length).toBeLessThanOrEqual(72);
+
+    const client = new WhatsAppCloudService({ config, http: { post: jest.fn() } });
+    await expect(client.sendMessage('50499990000', { text: 'x'.repeat(4097) }))
+      .rejects.toThrow('4096');
+  });
+
+  test('ordena mensajes consecutivos del mismo usuario sin bloquear a otros', async () => {
+    const enqueue = createSenderQueue();
+    const order = [];
+    let releaseFirst;
+    const firstGate = new Promise((resolve) => { releaseFirst = resolve; });
+    const first = enqueue('A', async () => { order.push('A1-start'); await firstGate; order.push('A1-end'); });
+    const second = enqueue('A', async () => { order.push('A2'); });
+    const other = enqueue('B', async () => { order.push('B1'); });
+    await other;
+    expect(order).toEqual(['A1-start', 'B1']);
+    releaseFirst();
+    await Promise.all([first, second]);
+    expect(order).toEqual(['A1-start', 'B1', 'A1-end', 'A2']);
+  });
+
+  test('ignora un webhook repetido con el mismo identificador', async () => {
+    const processMessage = jest.fn().mockResolvedValue(undefined);
+    const store = {
+      claim: jest.fn().mockResolvedValueOnce(true).mockResolvedValueOnce(false),
+      complete: jest.fn(), fail: jest.fn()
+    };
+    const app = express().use('/webhooks/whatsapp', createWhatsAppWebhook({ config, client: {}, processMessage, eventStore: store }));
+    const payload = { entry: [{ changes: [{ value: { messages: [{ id: 'wamid.dedupe.20260827', from: '50499990001', type: 'text', text: { body: '1' } }] } }] }] };
+    const raw = JSON.stringify(payload);
+    const signature = `sha256=${crypto.createHmac('sha256', config.appSecret).update(raw).digest('hex')}`;
+    for (let index = 0; index < 2; index += 1) {
+      await request(app).post('/webhooks/whatsapp').set('Content-Type', 'application/json')
+        .set('x-hub-signature-256', signature).send(raw).expect(200);
+    }
+    await new Promise(setImmediate);
+    await new Promise(setImmediate);
+    expect(processMessage).toHaveBeenCalledTimes(1);
   });
 
   test('reintenta errores temporales de Meta sin reintentar errores permanentes', async () => {

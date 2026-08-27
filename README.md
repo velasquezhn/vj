@@ -44,6 +44,7 @@ Copie `.env.example`; nunca versione `.env` ni credenciales.
 - `WHATSAPP_VERIFY_TOKEN`: valor aleatorio elegido por el propietario.
 - `META_APP_SECRET`: secreto para validar `X-Hub-Signature-256`.
 - `WHATSAPP_ADMIN_NUMBERS`: respaldo opcional para números autorizados, separados por coma y con código de país. La lista normal se administra desde **Configuración > Administradores de WhatsApp** en el panel.
+- `PUBLIC_CONTACT_NUMBERS`: números públicos de atención separados por coma y con código de país. Si se omite, el menú invita al huésped a continuar en el mismo chat; nunca muestra números inventados.
 - `PUBLIC_BASE_URL`: URL HTTPS pública del backend, usada para abrir comprobantes desde los avisos administrativos.
 - `WHATSAPP_CABIN_GALLERY_LIMIT`: máximo de fotografías enviadas al mostrar una cabaña (1 a 5; recomendado y predeterminado: 4).
 - `PAYMENT_WINDOW_HOURS`: plazo informado y reservado para que el huésped envíe el comprobante después de la autorización (24 por defecto).
@@ -55,6 +56,8 @@ Copie `.env.example`; nunca versione `.env` ni credenciales.
 2. Registre el número y cree un token permanente de system user con los permisos necesarios.
 3. Publique el servicio detrás de HTTPS.
 4. Configure `https://SU-DOMINIO/webhooks/whatsapp` usando `WHATSAPP_VERIFY_TOKEN`.
+
+La navegación, los comandos globales y el recorrido de prueba completo están documentados en [docs/WHATSAPP_FLOWS.md](docs/WHATSAPP_FLOWS.md).
 5. Suscriba el campo `messages` de la cuenta de WhatsApp Business.
 6. Configure `META_APP_SECRET`; los POST sin firma válida reciben `401`.
 7. Apruebe plantillas para conversaciones iniciadas por la empresa fuera de la ventana permitida.

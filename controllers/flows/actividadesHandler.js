@@ -1,9 +1,9 @@
 const { sendActividadDetails } = require('../../controllers/actividadesController');
-const { handleMainMenu } = require('../mainMenuHandler');
+const { enviarMenuPrincipal } = require('../../services/messagingService');
 
 async function handleActividadesState(bot, remitente, mensajeTexto, establecerEstado) {
     if (mensajeTexto.trim() === '0') {
-        await handleMainMenu(bot, remitente, 'menu');
+        await enviarMenuPrincipal(bot, remitente);
     } else {
         const seleccion = parseInt(mensajeTexto.trim());
         if (isNaN(seleccion)) {

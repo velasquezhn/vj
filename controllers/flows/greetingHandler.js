@@ -1,31 +1,25 @@
 const { obtenerUltimoSaludo, establecerUltimoSaludo } = require('../../services/stateService');
 const { enviarMenuPrincipal } = require('../../services/messagingService');
 const logger = require('../../config/logger');
+const { normalizeConversationInput } = require('../../services/whatsappMessages');
 
 async function handleGreeting(bot, remitente, mensajeTexto) {
     try {
         // Verificar comando de menú explícito
-        const comandoMenu = mensajeTexto.trim().toLowerCase() === 'menu' || mensajeTexto.trim().toLowerCase() === 'menú';
+        const comandoMenu = normalizeConversationInput(mensajeTexto) === 'menu';
         if (comandoMenu) {
             await enviarMenuPrincipal(bot, remitente);
             return true;
         }
 
+        const normalized = String(mensajeTexto || '').trim().toLowerCase()
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const esSaludo = /^(hola|buenas|buenos dias|buenas tardes|buenas noches|hey|hello)(?:[!.\s].*)?$/.test(normalized);
+        if (!esSaludo) return false;
+
         const hoy = new Date().toISOString().slice(0, 10);
-        const ultimoSaludo = obtenerUltimoSaludo(remitente);
-
-        // Si ya se saludó hoy, no hacer nada
-        if (ultimoSaludo === hoy) {
-            return false;
-        }
-
-        // Nuevo saludo diario
-        await establecerUltimoSaludo(remitente, hoy);
-        
-        // El menú interactivo ya contiene la bienvenida. Se envía una sola
-        // respuesta inicial para evitar duplicados y reducir consumo de API.
+        if (obtenerUltimoSaludo(remitente) !== hoy) await establecerUltimoSaludo(remitente, hoy);
         await enviarMenuPrincipal(bot, remitente);
-        
         return true;
 
     } catch (error) {

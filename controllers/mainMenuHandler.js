@@ -5,7 +5,16 @@ const { sendShareExperienceInstructions } = require('../routes/shareExperience')
 // const { manejarPostReserva } = require('../routes/postReservaHandler'); // TEMPORALMENTE COMENTADO
 const { extraerTelefono } = require('../utils/telefonoUtils');
 const { sendMessageWithDelay } = require('../utils/messageDelayUtils');
-const { enviarMenuActividades } = require('../services/messagingService');
+const { enviarMenuPrincipal, enviarMenuCabanas, enviarMenuActividades } = require('../services/messagingService');
+const { sendReplyButtons } = require('../services/whatsappInteractiveService');
+const { getPaymentSettings } = require('../services/paymentSettingsService');
+const {
+  reservationStart,
+  contactMessage,
+  faqMessage,
+  invalidOption,
+  NAVIGATION_FOOTER
+} = require('../services/whatsappMessages');
 
 const weatherModule = new WeatherModule(process.env.OPENWEATHER_API_KEY);
 
@@ -19,7 +28,7 @@ const STATES = {
   POST_RESERVA: 'post_reserva'
 };
 
-// Helper para enviar mensajes con manejo de errores y delay aleatorio
+// Helper de envío inmediato con manejo uniforme de errores.
 async function safeSend(bot, recipient, text) {
   try {
     await sendMessageWithDelay(bot, recipient, { text });
@@ -78,42 +87,14 @@ async function generateDynamicMenu(itemType) {
   }
 }
 
-// Contenido de FAQs
-const FAQ_CONTENT = `🏝️ *Preguntas Frecuentes – Villas frente al mar*\n\n` +
-  `1. 🏡 ¿Qué tipos de alojamientos ofrecen?\n` +
-  `Ofrecemos cabañas y apartamentos equipados, con vista al mar y acceso directo a la playa.\n\n` +
-  `2. 🕒 ¿A qué hora es el check-in y check-out?\n` +
-  `Check-in: 2:00 PM | Check-out: 11:00 AM\n\n` +
-  `3. 💵 ¿Cuáles son las tarifas?\n` +
-  `Varían según temporada y tipo de alojamiento. Contáctanos para cotización.\n\n` +
-  `4. 👨‍👩‍👧 ¿Se permiten niños y mascotas?\n` +
-  `Niños: ¡Sí! | Mascotas: Consulta condiciones.\n\n` +
-  `5. 🍳 ¿Las cabañas tienen cocina?\n` +
-  `Sí, todas incluyen cocina equipada.\n\n` +
-  `6. 🏖️ ¿Qué servicios están incluidos?\n` +
-  `Aire acondicionado, Wi-Fi, Parqueo, Acceso a playa\n\n` +
-  `7. 📍 ¿Dónde están ubicados?\n` +
-  `Tela, Atlántida, frente al mar.\n\n` +
-  `8. 📅 ¿Cómo reservar?\n` +
-  `Escríbenos con tus fechas y número de personas.\n\n` +
-  `9. 💳 ¿Formas de pago?\n` +
-  `Efectivo, Transferencias, Tarjetas\n\n` +
-  `10. 🔒 ¿Depósito para reservar?\n` +
-  `Sí, 50% de adelanto.\n\n` +
-  `Escribe "menu" para volver al menú principal.`;
-
 async function handleMainMenuOptions(bot, remitente, mensaje, establecerEstado) {
   switch (mensaje) {
     case '1': // Alojamientos
-      const menuCabanas = await generateDynamicMenu('cabañas');
-      await safeSend(bot, remitente, menuCabanas);
-      await establecerEstado(remitente, STATES.LODGING);
+      await enviarMenuCabanas(bot, remitente);
       break;
 
     case '2': // Reservar
-      await safeSend(bot, remitente, 
-        '✨ *¡Reserva tu experiencia perfecta!* ✨\n🗓️ Solo compártenos tus fechas favoritas\n💫 Ejemplo: 20/08/2025 - 25/08/2025 o del 20 al 25 de agosto'
-      );
+      await safeSend(bot, remitente, reservationStart());
       await establecerEstado(remitente, STATES.DATES);
       break;
 
@@ -122,15 +103,12 @@ async function handleMainMenuOptions(bot, remitente, mensaje, establecerEstado) 
       break;
 
     case '4': // Contacto
-      await safeSend(bot, remitente, 
-        `📞 *Atención 24/7:*\n` +
-        `WhatsApp: http://wa.me/50499222188\n` +
-        `Llamadas: 50499222188\n\n` +
-        `📞 *Atención 24/7:*\n` +
-        `WhatsApp: http://wa.me/50499905880\n` +
-        `Llamadas: 50499905880\n\n` +
-        `Escribe "menu" para volver al menú principal.`
-      );
+      await sendReplyButtons(bot, remitente, {
+        header: 'Contacto',
+        body: contactMessage(),
+        footer: NAVIGATION_FOOTER,
+        buttons: [{ id: 'main_menu', title: 'Menú principal' }]
+      });
       break;
 
     case '5': // Clima
@@ -144,8 +122,18 @@ async function handleMainMenuOptions(bot, remitente, mensaje, establecerEstado) 
       break;
 
     case '6': // Preguntas Frecuentes
-      await safeSend(bot, remitente, FAQ_CONTENT);
-      await safeSend(bot, remitente, 'Escribe *menu* o *1* para volver al menú principal');
+      {
+        const payment = await getPaymentSettings();
+        await sendReplyButtons(bot, remitente, {
+          header: 'Preguntas frecuentes',
+          body: faqMessage(payment.deposit_percentage),
+          footer: NAVIGATION_FOOTER,
+          buttons: [
+            { id: 'reservation_start', title: 'Reservar' },
+            { id: 'main_menu', title: 'Menú principal' }
+          ]
+        });
+      }
       break;
 
     case '7': // Compartir experiencia
@@ -167,11 +155,19 @@ async function handleMainMenuOptions(bot, remitente, mensaje, establecerEstado) 
       break;
 
     case '9': // Programa fidelidad
-      await safeSend(bot, remitente, '💎 *Programa Fidelidad*:\nAcumula puntos y obtén descuentos exclusivos.');
+      await sendReplyButtons(bot, remitente, {
+        header: 'Beneficios',
+        body: '💎 Las promociones y beneficios se anuncian directamente por nuestros canales oficiales. Consulta con el equipo cuáles están disponibles para tus fechas.',
+        footer: NAVIGATION_FOOTER,
+        buttons: [
+          { id: 'main_4', title: 'Contactar' },
+          { id: 'main_menu', title: 'Menú principal' }
+        ]
+      });
       break;
 
     default: // Opción inválida
-      await safeSend(bot, remitente, '❌ Opción inválida. Usa el menú numérico.');
+      await safeSend(bot, remitente, invalidOption('Usa el botón “Ver opciones” o responde con un número del 1 al 9.'));
       break;
   }
 }

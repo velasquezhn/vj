@@ -1,7 +1,9 @@
 const logger = require('../config/logger');
 
 function truncate(value, maxLength) {
-  return String(value || '').trim().slice(0, maxLength);
+  const text = String(value || '').trim();
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, Math.max(maxLength - 1, 0))}…`;
 }
 
 function textFallback(body, options) {
@@ -10,7 +12,7 @@ function textFallback(body, options) {
 }
 
 async function sendReplyButtons(bot, to, { body, buttons, header, headerImage, footer, fallbackText }) {
-  const normalizedButtons = buttons.slice(0, 3).map((button) => ({
+  const normalizedButtons = (buttons || []).filter((button) => button?.id && button?.title).slice(0, 3).map((button) => ({
     type: 'reply',
     reply: {
       id: truncate(button.id, 256),
@@ -45,14 +47,23 @@ async function sendReplyButtons(bot, to, { body, buttons, header, headerImage, f
 }
 
 async function sendList(bot, to, { body, buttonText, sections, header, footer, fallbackText }) {
-  const normalizedSections = sections.slice(0, 10).map((section) => ({
-    title: truncate(section.title, 24),
-    rows: section.rows.slice(0, 10).map((row) => ({
-      id: truncate(row.id, 200),
-      title: truncate(row.title, 24),
-      ...(row.description ? { description: truncate(row.description, 72) } : {})
-    }))
-  }));
+  let remainingRows = 10;
+  const normalizedSections = (sections || []).slice(0, 10).map((section) => {
+    const rows = (section.rows || [])
+      .filter((row) => row?.id && row?.title)
+      .slice(0, remainingRows)
+      .map((row) => ({
+        id: truncate(row.id, 200),
+        title: truncate(row.title, 24),
+        ...(row.description ? { description: truncate(row.description, 72) } : {})
+      }));
+    remainingRows -= rows.length;
+    return { title: truncate(section.title, 24), rows };
+  }).filter((section) => section.rows.length > 0);
+
+  if (!normalizedSections.length) {
+    return bot.sendMessage(to, { text: truncate(fallbackText || body || 'No hay opciones disponibles.', 4096) });
+  }
 
   const interactive = {
     type: 'list',
@@ -74,9 +85,9 @@ async function sendList(bot, to, { body, buttonText, sections, header, footer, f
     });
     const rows = normalizedSections.flatMap((section) => section.rows);
     return bot.sendMessage(to, {
-      text: fallbackText || textFallback(body, rows)
+      text: truncate(fallbackText || textFallback(body, rows), 4096)
     });
   }
 }
 
-module.exports = { sendReplyButtons, sendList };
+module.exports = { sendReplyButtons, sendList, truncate };

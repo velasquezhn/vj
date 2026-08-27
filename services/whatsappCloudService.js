@@ -43,7 +43,12 @@ class WhatsAppCloudService {
     if (!recipient) throw new Error('Destinatario de WhatsApp inválido');
     const base = { messaging_product: 'whatsapp', recipient_type: 'individual', to: recipient };
 
-    if (content.text) return this.request({ ...base, type: 'text', text: { body: content.text, preview_url: false } });
+    if (content.text) {
+      const body = String(content.text).trim();
+      if (!body) throw new Error('El mensaje de WhatsApp está vacío');
+      if (body.length > 4096) throw new Error('El mensaje de WhatsApp supera el límite de 4096 caracteres');
+      return this.request({ ...base, type: 'text', text: { body, preview_url: false } });
+    }
     if (content.interactive) {
       return this.request({ ...base, type: 'interactive', interactive: content.interactive });
     }

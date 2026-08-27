@@ -6,30 +6,21 @@ const { loadMenuActivities } = require('./menuActivitiesService');
 const { sendReplyButtons, sendList } = require('./whatsappInteractiveService');
 const { buildCabinDetails, cabinMedia } = require('./whatsappCabinPresentationService');
 const { buildCabinGalleryUrl } = require('./whatsappCabinGalleryService');
+const { MAIN_MENU_ROWS, mainMenuFallback, NAVIGATION_FOOTER } = require('./whatsappMessages');
 
 async function enviarMenuPrincipal(bot, remitente) {
     try {
         await establecerEstado(remitente, 'MENU_PRINCIPAL');
         await sendList(bot, remitente, {
             header: 'Villas Julie',
-            body: '¡Hola! Te ayudamos a planificar tu estadía frente al mar. ¿Qué deseas hacer?',
-            footer: 'Puedes escribir “menú” en cualquier momento',
+            body: 'Te ayudamos a conocer los alojamientos, solicitar una reserva y consultar su estado. ¿Qué deseas hacer?',
+            footer: NAVIGATION_FOOTER,
             buttonText: 'Ver opciones',
             sections: [{
                 title: 'Servicios',
-                rows: [
-                    { id: 'main_1', title: '🏡 Alojamientos', description: 'Tipos de cabañas, capacidad y precios' },
-                    { id: 'main_2', title: '📅 Reservar ahora', description: 'Consulta fechas y crea tu reserva' },
-                    { id: 'main_3', title: '🌴 Experiencias', description: 'Actividades disponibles en la zona' },
-                    { id: 'main_4', title: '📲 Contacto', description: 'Habla con nuestro equipo' },
-                    { id: 'main_5', title: '🌦️ Clima', description: 'Pronóstico para tu visita' },
-                    { id: 'main_6', title: '❓ Preguntas frecuentes', description: 'Horarios, servicios y pagos' },
-                    { id: 'main_7', title: '📸 Compartir experiencia', description: 'Envíanos fotos de tu visita' },
-                    { id: 'main_8', title: '🛎️ Mi reserva', description: 'Pagos, cambios y asistencia' },
-                    { id: 'main_9', title: '💎 Beneficios', description: 'Programa de fidelidad' }
-                ]
+                rows: MAIN_MENU_ROWS
             }],
-            fallbackText: constants.MENU_PRINCIPAL
+            fallbackText: mainMenuFallback()
         });
         logger.info(`Menú principal enviado a ${remitente}`);
     } catch (error) {
@@ -55,21 +46,24 @@ async function enviarMenuCabanas(bot, remitente) {
         const tipos = await loadMenuCabinTypes();
         
         if (tipos.length === 0) {
-            await bot.sendMessage(remitente, { text: constants.ERROR_NO_CABANAS });
-            await enviarMenuPrincipal(bot, remitente);
-            return;
+            await establecerEstado(remitente, 'MENU_PRINCIPAL');
+            return sendReplyButtons(bot, remitente, {
+                body: constants.ERROR_NO_CABANAS,
+                footer: NAVIGATION_FOOTER,
+                buttons: [{ id: 'main_menu', title: 'Menú principal' }]
+            });
         }
         
         await establecerEstado(remitente, 'LISTA_CABAÑAS');
         
         const menuCabanas = `🏡 *Villas Julie — Alojamientos*\n\n` +
             tipos.map((tipo, index) => `${index + 1}. ${tipo.nombre}`).join('\n') +
-            `\n\n0. Volver ↩️\nPor favor selecciona el número de la opción que te interesa:`;
+            `\n\n0. Menú principal\n\nResponde con el número del alojamiento que deseas conocer.`;
 
         await sendList(bot, remitente, {
             header: 'Nuestros alojamientos',
             body: 'Selecciona un tipo para ver capacidad, precio, descripción y fotografías.',
-            footer: 'Precios por noche en lempiras',
+            footer: 'Precios por noche en lempiras · “menú” para volver',
             buttonText: 'Ver alojamientos',
             sections: [{
                 title: 'Tipos disponibles',
@@ -89,10 +83,11 @@ async function enviarMenuCabanas(bot, remitente) {
             userId: remitente
         });
         try {
-            await bot.sendMessage(remitente, { 
-                text: constants.ERROR_CARGAR_CABANAS 
+            await sendReplyButtons(bot, remitente, {
+                body: constants.ERROR_CARGAR_CABANAS,
+                footer: NAVIGATION_FOOTER,
+                buttons: [{ id: 'main_menu', title: 'Menú principal' }]
             });
-            await enviarMenuPrincipal(bot, remitente);
         } catch (fallbackError) {
             logger.critical(`Error de comunicación con ${remitente}: ${fallbackError.message}`, {
                 stack: fallbackError.stack,
@@ -108,7 +103,6 @@ async function enviarDetalleCabaña(bot, remitente, seleccion) {
         
         const seleccionNum = parseInt(seleccion);
         if (isNaN(seleccionNum) || seleccionNum < 1 || seleccionNum > tipos.length) {
-            await bot.sendMessage(remitente, { text: constants.ERROR_SELECCION_INVALIDA });
             await enviarMenuCabanas(bot, remitente);
             return;
         }
@@ -181,10 +175,14 @@ async function enviarDetalleCabaña(bot, remitente, seleccion) {
             seleccion
         });
         try {
-            await bot.sendMessage(remitente, { 
-                text: constants.ERROR_CARGAR_DETALLE_CABANA 
+            await sendReplyButtons(bot, remitente, {
+                body: constants.ERROR_CARGAR_DETALLE_CABANA,
+                footer: NAVIGATION_FOOTER,
+                buttons: [
+                    { id: 'detail_back', title: 'Ver alojamientos' },
+                    { id: 'main_menu', title: 'Menú principal' }
+                ]
             });
-            await enviarMenuCabanas(bot, remitente);
         } catch (fallbackError) {
             logger.critical(`Error de comunicación con ${remitente}: ${fallbackError.message}`, {
                 stack: fallbackError.stack,
@@ -197,7 +195,7 @@ async function enviarDetalleCabaña(bot, remitente, seleccion) {
 async function enviarMenuActividades(bot, remitente) {
     const actividades = await loadMenuActivities();
     const fallback = actividades.length
-        ? `🌴 *Experiencias locales*\n\n${actividades.map((item, index) => `${index + 1}. ${item.nombre}`).join('\n')}\n\n0. Menú principal`
+        ? `🌴 *Experiencias locales*\n\n${actividades.map((item, index) => `${index + 1}. ${item.nombre}`).join('\n')}\n\n0. Menú principal\n\nResponde con el número de una experiencia.`
         : '⚠️ No hay experiencias disponibles en este momento.';
     if (!actividades.length) return bot.sendMessage(remitente, { text: fallback });
 

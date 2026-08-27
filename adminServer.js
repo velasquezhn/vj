@@ -60,6 +60,19 @@ const PORT = config.port;
 const whatsappEnabled = config.whatsapp.enabled;
 const whatsappConfigured = whatsappEnabled && ['accessToken', 'phoneNumberId', 'verifyToken', 'appSecret']
   .every((key) => Boolean(config.whatsapp[key]));
+const REQUIRED_TABLES = ['Users', 'Cabins', 'Reservations', 'UserStates', 'WhatsAppEvents'];
+
+async function assertDatabaseReady() {
+  const placeholders = REQUIRED_TABLES.map(() => '?').join(', ');
+  const rows = await runQuery(
+    `SELECT name FROM sqlite_master WHERE type = 'table' AND name IN (${placeholders})`,
+    REQUIRED_TABLES
+  );
+  const found = new Set(rows.map((row) => row.name));
+  const missing = REQUIRED_TABLES.filter((name) => !found.has(name));
+  if (missing.length) throw new Error(`Database migration required: ${missing.join(', ')}`);
+  return true;
+}
 // Debe montarse antes del parser JSON para verificar la firma sobre los bytes originales.
 if (whatsappConfigured && (process.env.NODE_ENV !== 'test' || process.env.ENABLE_WHATSAPP_WEBHOOK === 'true')) {
   app.use('/webhooks/whatsapp', createWhatsAppWebhook({ config: config.whatsapp }));
@@ -79,7 +92,7 @@ app.get('/health', (_req, res) => res.status(200).json({
 }));
 app.get('/ready', async (_req, res) => {
   try {
-    await runQuery('SELECT 1 AS ready');
+    await assertDatabaseReady();
     const ready = !whatsappEnabled || whatsappConfigured;
     return res.status(ready ? 200 : 503).json({
       status: ready ? 'ready' : 'not_ready', database: 'ok', whatsappEnabled, whatsappConfigured
@@ -994,18 +1007,21 @@ app.use((error, req, res, _next) => {
 });
 
 function startServer() {
-  const server = app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Admin server running on 0.0.0.0:${PORT}`);
-  
-  // Iniciar servicio de backup automático
-  console.log('🔄 Iniciando servicio de backup automático...');
-  backupService.start();
-  reservaCleanupService.iniciar();
-  
+  const server = app.listen(PORT, '0.0.0.0', async () => {
+    try {
+      await assertDatabaseReady();
+      console.log(`Admin server running on 0.0.0.0:${PORT}`);
+      console.log('🔄 Iniciando servicio de backup automático...');
+      backupService.start();
+      reservaCleanupService.iniciar();
+    } catch (error) {
+      logger.error('Database is not ready; run pnpm db:migrate before starting', { error: error.message });
+      server.close(() => process.exit(1));
+    }
   });
   return server;
 }
 
 if (require.main === module) startServer();
 
-module.exports = { app, startServer };
+module.exports = { app, startServer, assertDatabaseReady };

@@ -14,8 +14,8 @@ async function sendShareExperienceInstructions(bot, remitente, establecerEstadoF
             `2. Etiqueta 👉 @villasjulie\n` +
             `3. Envíanos el enlace aquí ⬇️\n\n` +
             `Participa para ganarte L 500 de descuento, 4 ganadores al año.\n\n` +
-            `Por favor, envía el enlace de tu publicación de Instagram (debe ser un enlace tipo instagram.com/p/...)` +
-            `\n\nEscribe "menu" para ir al menú principal.`
+            `Envía aquí el enlace público de la publicación.` +
+            `\n\nEscribe *cancelar* para salir o *menú* para volver al inicio.`
     });
     await establecerEstadoFunc(remitente, 'share_experience');
   } catch (error) {
@@ -31,13 +31,13 @@ async function sendShareExperienceInstructions(bot, remitente, establecerEstadoF
  * @param {Function} establecerEstadoFunc - Function to set user state
  */
 async function handleShareExperienceResponse(bot, remitente, mensaje, establecerEstadoFunc) {
-  const instagramLink = mensaje.trim();
-  const instagramPostPattern = /^https?:\/\/(www\.)?instagram\.com\/p\/[A-Za-z0-9_-]+\/?$/i;
-  if (instagramPostPattern.test(instagramLink)) {
+  const socialLink = mensaje.trim();
+  const socialPostPattern = /^https?:\/\/(?:www\.)?(?:instagram\.com\/(?:p|reel)\/[A-Za-z0-9_-]+|facebook\.com\/[A-Za-z0-9._-]+\/(?:posts|videos)\/[A-Za-z0-9._-]+)\/?(?:\?.*)?$/i;
+  if (socialPostPattern.test(socialLink)) {
     try {
       await bot.sendMessage(remitente, {
         text: '¡Gracias por compartir tu experiencia! 🎉 Estás participando en un descuento de L 500 en tu próxima reserva.' +
-              `\n\nEscribe "menu" para ir al menú principal.`
+              `\n\nEscribe *menú* para volver al inicio.`
       });
       await establecerEstadoFunc(remitente, null); // Limpiar estado
     } catch (error) {
@@ -46,8 +46,7 @@ async function handleShareExperienceResponse(bot, remitente, mensaje, establecer
   } else {
     try {
       await bot.sendMessage(remitente, {
-        text: 'El enlace que enviaste no es válido. Por favor, asegúrate de enviar un enlace de publicación de Instagram válido (debe ser tipo instagram.com/p/...). Intenta de nuevo.' +
-              `\n\nEscribe "menu" para ir al menú principal.`
+        text: 'No reconocí ese enlace. Envía el enlace público de una publicación o reel de Instagram, o de una publicación o video de Facebook.\n\nEscribe *cancelar* para salir o *menú* para volver al inicio.'
       });
     } catch (error) {
       console.error('Error enviando mensaje de enlace inválido:', error);

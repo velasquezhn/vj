@@ -63,7 +63,13 @@ function createEventStore() {
         'INSERT OR IGNORE INTO WhatsAppEvents(message_id, event_type, status) VALUES (?, ?, ?)',
         [id, type, status]
       );
-      return result.changes === 1;
+      if (result.changes === 1) return true;
+      // Un evento fallido puede reintentarse cuando Meta lo reenvía. La condición
+      // sobre error evita que dos entregas concurrentes reclamen el mismo mensaje.
+      const retry = await runExecute(`UPDATE WhatsAppEvents
+        SET error = NULL, received_at = CURRENT_TIMESTAMP
+        WHERE message_id = ? AND event_type = ? AND processed_at IS NULL AND error IS NOT NULL`, [id, type]);
+      return retry.changes === 1;
     },
     complete(id) {
       return runExecute('UPDATE WhatsAppEvents SET processed_at = CURRENT_TIMESTAMP, error = NULL WHERE message_id = ?', [id]);
@@ -74,12 +80,27 @@ function createEventStore() {
   };
 }
 
+function createSenderQueue() {
+  const pending = new Map();
+  return async function enqueue(sender, work) {
+    const previous = pending.get(sender) || Promise.resolve();
+    const current = previous.catch(() => undefined).then(work);
+    pending.set(sender, current);
+    try {
+      return await current;
+    } finally {
+      if (pending.get(sender) === current) pending.delete(sender);
+    }
+  };
+}
+
 function createWhatsAppWebhook(options = {}) {
   const config = options.config || loadConfig({ validateWhatsApp: true }).whatsapp;
   const client = options.client || new WhatsAppCloudService({ config });
   // Carga diferida: permite probar/verificar el webhook sin abrir SQLite.
   const processMessage = options.processMessage || require('../controllers/messageHandler').procesarMensaje;
   const eventStore = options.eventStore || createEventStore();
+  const enqueue = options.enqueue || createSenderQueue();
   const router = express.Router();
 
   router.get('/', (req, res) => {
@@ -105,21 +126,25 @@ function createWhatsAppWebhook(options = {}) {
         }
         const { message } = event;
         if (!message.id || processed.has(message.id)) continue;
-        if (!await eventStore.claim(message.id, 'message')) continue;
-        processed.set(message.id, Date.now());
-        for (const [id, timestamp] of processed) if (Date.now() - timestamp > DEDUPE_TTL_MS) processed.delete(id);
         const sender = `${message.from}@s.whatsapp.net`;
-        const normalized = { key: { remoteJid: sender, fromMe: false }, message: {} };
-        if (message.type === 'image') normalized.message.imageMessage = message.image;
-        else if (message.type === 'document') normalized.message.documentMessage = message.document;
-        else normalized.message.conversation = messageText(message);
-        try {
-          await processMessage(client, sender, messageText(message), normalized);
-          await eventStore.complete(message.id);
-        } catch (error) {
-          await eventStore.fail(message.id, error.message);
-          logger.error('Error procesando webhook de WhatsApp', { messageId: message.id, error: error.message });
-        }
+        await enqueue(sender, async () => {
+          if (processed.has(message.id)) return;
+          if (!await eventStore.claim(message.id, 'message')) return;
+          processed.set(message.id, Date.now());
+          for (const [id, timestamp] of processed) if (Date.now() - timestamp > DEDUPE_TTL_MS) processed.delete(id);
+          const normalized = { key: { remoteJid: sender, fromMe: false }, message: {} };
+          if (message.type === 'image') normalized.message.imageMessage = message.image;
+          else if (message.type === 'document') normalized.message.documentMessage = message.document;
+          else normalized.message.conversation = messageText(message);
+          try {
+            await processMessage(client, sender, messageText(message), normalized);
+            await eventStore.complete(message.id);
+          } catch (error) {
+            processed.delete(message.id);
+            await eventStore.fail(message.id, error.message);
+            logger.error('Error procesando webhook de WhatsApp', { messageId: message.id, error: error.message });
+          }
+        });
         } catch (error) {
           logger.error('Error almacenando evento de WhatsApp', {
             messageId: event.message?.id || event.status?.id,
@@ -132,4 +157,12 @@ function createWhatsAppWebhook(options = {}) {
   return router;
 }
 
-module.exports = { createWhatsAppWebhook, verifySignature, extractEvents, createEventStore, messageText, normalizeInteractiveReply };
+module.exports = {
+  createWhatsAppWebhook,
+  verifySignature,
+  extractEvents,
+  createEventStore,
+  createSenderQueue,
+  messageText,
+  normalizeInteractiveReply
+};
