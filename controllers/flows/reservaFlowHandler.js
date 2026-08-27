@@ -1,11 +1,9 @@
 const { establecerEstado } = require('../../services/stateService');
 const { calcularPrecioTotal } = require('../../services/reservaPriceService');
-const { enviarAlGrupo } = require('../../utils/utils');
 const { guardarComprobante } = require('../../services/comprobanteService');
 const { descargarMedia } = require('../../utils/mediaUtils');
-const { enviarReservaAlGrupo } = require('../../utils/grupoUtils');
 const { ESTADOS_RESERVA } = require('../reservaConstants');
-const { createReservationWithUser, normalizePhoneNumber } = require('../../services/reservaService');
+const { createReservationWithUser, normalizePhoneNumber, upsertUser } = require('../../services/reservaService');
 const alojamientosService = require('../../services/alojamientosService');
 const { parseDateRange } = require('../../utils/dateRangeParser');
 const { 
@@ -256,6 +254,9 @@ Selecciona una opción para continuar.`;
                     text: `🏠 *Asignado automáticamente:*
 *${tipoCabana.toUpperCase()}* para ${cantidad} persona(s)`
                 });
+                let cabanaDisponible;
+                let fechaInicio;
+                let fechaFin;
                 try {
                     const precioTotal = calcularPrecioTotal(
                         tipoCabana, 
@@ -326,10 +327,10 @@ Selecciona una opción para continuar.`;
                 
                 try {
                     // Convertir fechas al formato correcto para la búsqueda
-                    const fechaInicio = datos.fechaEntrada.split('/').reverse().join('-'); // DD/MM/YYYY -> YYYY-MM-DD
-                    const fechaFin = datos.fechaSalida.split('/').reverse().join('-');
+                    fechaInicio = datos.fechaEntrada.split('/').reverse().join('-'); // DD/MM/YYYY -> YYYY-MM-DD
+                    fechaFin = datos.fechaSalida.split('/').reverse().join('-');
                     
-                    const cabanaDisponible = await buscarCabanaDisponible(
+                    cabanaDisponible = await buscarCabanaDisponible(
                         datos.alojamiento, 
                         fechaInicio, 
                         fechaFin, 
@@ -363,22 +364,46 @@ Selecciona una opción para continuar.`;
                     return;
                 }
                 
-                const resumen = `\n📋 *NUEVA SOLICITUD DE RESERVA*\n--------------------------------\n• 👤 *Nombre:* ${datos.nombre}\n• 📱 *Teléfono:* ${datos.telefono}\n• 👥 *Personas:* ${datos.personas}\n• 🏠 *Alojamiento:* ${datos.alojamiento}\n• 📅 *Fechas:* ${datos.fechaEntrada} - ${datos.fechaSalida} (${datos.noches} noches)\n• 💰 *Total:* Lmps. ${datos.precioTotal}\n--------------------------------\n                `;
-                
-                await enviarAlGrupo(bot, resumen);
-                await enviarAlGrupo(bot, `/confirmar ${datos.telefono}`);
-                await bot.sendMessage(remitente, { 
-                    text: '📤 Reserva enviada para confirmación\n\n💳 *Por favor esperar administración confirme su Reserva:*' 
+                const created = await createReservationWithUser(datos.telefono, {
+                    start_date: fechaInicio,
+                    end_date: fechaFin,
+                    status: 'pendiente',
+                    total_price: datos.precioTotal,
+                    personas: datos.personas,
+                    alojamiento: datos.alojamiento
+                }, cabanaDisponible.cabin_id);
+                if (!created.success) throw new Error(created.error || 'No se pudo crear la solicitud');
+                await upsertUser(datos.telefono, datos.nombre);
+
+                await bot.sendMessage(remitente, {
+                    text: `✅ *SOLICITUD REGISTRADA*\n\n` +
+                          `Código: *${created.confirmationCode}*\n` +
+                          `Estado: *Pendiente de comprobante*\n` +
+                          `Alojamiento: *${cabanaDisponible.name}*\n` +
+                          `Fechas: *${fechaInicio} al ${fechaFin}*\n` +
+                          `Total: *HNL ${Number(datos.precioTotal).toLocaleString('es-HN')}*\n\n` +
+                          '📎 Envía ahora una foto o PDF de tu comprobante. El administrador lo revisará desde el panel y recibirás aquí la confirmación final.'
                 });
 
-                // Remove fetching latest pending reservation here to avoid reusing old reservation ID
-                // The reservation will be created in handleConfirmarCommand and state updated accordingly
-                
-                await establecerEstado(remitente, ESTADOS_RESERVA.ESPERANDO_PAGO, datos);
+                await establecerEstado(remitente, ESTADOS_RESERVA.ESPERANDO_PAGO, {
+                    ...datos,
+                    reservaId: created.reservationId,
+                    reservation_id: created.reservationId,
+                    confirmationCode: created.confirmationCode,
+                    cabinId: cabanaDisponible.cabin_id,
+                    cabinName: cabanaDisponible.name
+                });
                 break;
             }
 
             case ESTADOS_RESERVA.ESPERANDO_PAGO: {
+                if (!datos?.reservaId) {
+                    await bot.sendMessage(remitente, {
+                        text: 'Actualizamos el sistema de reservas y esta solicitud anterior quedó incompleta. Escribe *menú* y crea una nueva solicitud; no se realizó ningún cargo.'
+                    });
+                    await establecerEstado(remitente, 'MENU_PRINCIPAL', {});
+                    return;
+                }
                 console.log('Mensaje completo recibido en ESPERANDO_PAGO:', JSON.stringify(mensaje));
                 console.log('Mensaje keys:', Object.keys(mensaje));
                 console.log('Mensaje tiene imageMessage:', mensaje.hasOwnProperty('imageMessage'));
@@ -403,10 +428,16 @@ Selecciona una opción para continuar.`;
                         nombreArchivo
                     );
                     console.log('Reserva actualizada con comprobante:', reservaActualizada);
-                    await bot.sendMessage(remitente, { 
-                        text: '✅ Comprobante recibido! Estamos verificando tu pago.' 
+                    await bot.sendMessage(remitente, {
+                        text: `✅ *COMPROBANTE RECIBIDO*\n\nSolicitud: *${datos.confirmationCode || `VJ-${String(datos.reservaId).padStart(6, '0')}`}*\n\nEl administrador ya puede revisarlo en el panel. Te notificaremos por este chat cuando sea aprobado o rechazado.`
                     });
-                    await enviarReservaAlGrupo(bot, reservaActualizada);
+                    const { notifyWhatsAppAdmins } = require('../../services/whatsappAdminService');
+                    const adminDelivery = await notifyWhatsAppAdmins(bot, datos.reservaId);
+                    logger.info('Solicitud enviada a administradores de WhatsApp', {
+                        reservationId: datos.reservaId,
+                        sent: adminDelivery.sent,
+                        failed: adminDelivery.failed
+                    });
                     await establecerEstado(remitente, ESTADOS_RESERVA.ESPERANDO_CONFIRMACION, datos);
                 } catch (error) {
                     console.error('Error procesando comprobante:', error);
@@ -419,7 +450,7 @@ Selecciona una opción para continuar.`;
 
             case ESTADOS_RESERVA.ESPERANDO_CONFIRMACION: {
                 await bot.sendMessage(remitente, { 
-                    text: '⏳ Tu reserva está en proceso de confirmación\nTe notificaremos cuando esté lista' 
+                    text: `⏳ Tu solicitud *${datos.confirmationCode || ''}* está pendiente de revisión administrativa. Te notificaremos por este chat cuando termine la revisión.`
                 });
                 break;
             }

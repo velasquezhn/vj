@@ -539,11 +539,13 @@ const adminDashboardRoutes = require('./routes/adminDashboard');
 const adminCabinTypesRoutes = require('./routes/adminCabinTypes');
 const adminUsersRoutes = require('./routes/adminUsers');
 const adminActivitiesRoutes = require('./routes/adminActivities');
+const adminWhatsAppAdminsRoutes = require('./routes/adminWhatsAppAdmins');
 
 // Dashboard, Cabin Types, Activities y Admin Users routes (PROTEGIDAS)
 app.use('/admin/dashboard', authenticateToken, adminDashboardRoutes);
 app.use('/admin/cabin-types', authenticateToken, adminCabinTypesRoutes);
 app.use('/admin/activities', authenticateToken, adminActivitiesRoutes);
+app.use('/admin/whatsapp-admins', authenticateToken, adminWhatsAppAdminsRoutes);
 app.use('/admin/admin-users', authenticateToken, adminUsersRoutes);
 
 // Conversation States routes (PROTEGIDAS)

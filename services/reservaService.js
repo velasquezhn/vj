@@ -124,7 +124,13 @@ async function createReservationWithUser(phoneNumber, reservaData, cabinId) {
             return { success: false, error: 'No se pudo obtener ID de reserva' };
         }
 
-        return { success: true, reservationId };
+        const confirmationCode = `VJ-${String(reservationId).padStart(6, '0')}`;
+        await runExecute(
+            'UPDATE Reservations SET confirmation_code = ?, updated_at = CURRENT_TIMESTAMP WHERE reservation_id = ?',
+            [confirmationCode, reservationId]
+        );
+
+        return { success: true, reservationId, confirmationCode };
     } catch (error) {
         logger.error('Error in createReservationWithUser:', error);
         return { success: false, error: error.message || 'Error desconocido' };

@@ -9,11 +9,11 @@ const { handleReservaState } = require('./reservaFlowHandler');
 const { ESTADOS_RESERVA } = require('../reservaConstants');
 const { enviarMenuPrincipal } = require('../../services/messagingService');
 const logger = require('../../config/logger');
-const { reenviarComprobanteAlGrupo } = require('../../utils/utils');
 const alojamientosService = require('../../services/alojamientosService');
 
 const { extractMessageText } = require('./messageProcessorUtils');
 const { sendMessageWithDelay } = require('../../utils/messageDelayUtils');
+const { isAdminSender, handleAdminMessage } = require('../../services/whatsappAdminService');
 // const { manejarPostReserva, manejarNoReserva, procesarComprobantePostReserva } = require('../../routes/postReservaHandler'); // TEMPORALMENTE COMENTADO
 
 /**
@@ -47,6 +47,12 @@ async function procesarMensaje(bot, remitente, mensaje, mensajeObj) {
             ? mensaje.toLowerCase().trim()
             : extractMessageText(mensajeObj);
 
+        // Los administradores autorizados usan un flujo privado de aprobación.
+        // Se procesa antes del saludo para que los botones no abran el menú de huéspedes.
+        if (await isAdminSender(remitente) && await handleAdminMessage(bot, remitente, mensajeTexto)) {
+            return;
+        }
+
         // Manejar saludos primero
         if (await handleGreeting(bot, remitente, mensajeTexto)) {
             return;
@@ -72,103 +78,8 @@ async function procesarMensaje(bot, remitente, mensaje, mensajeObj) {
         // Log messageObj for debugging
         logger.debug('Mensaje recibido completo:', mensajeObj);
 
-        // Check if message contains image or document to forward as deposit receipt
-        const hasImage = mensajeObj?.message?.imageMessage || mensajeObj?.imageMessage;
-        const hasDocument = mensajeObj?.message?.documentMessage || mensajeObj?.documentMessage;
-
-        if ((estado === ESTADOS_RESERVA.ESPERANDO_CONFIRMACION || estado === ESTADOS_RESERVA.ESPERANDO_PAGO) && (hasImage || hasDocument)) {
-            logger.info(`Estado ${estado} y mensaje con imagen o documento detectado, reenviando comprobante al grupo.`);
-            // Forward deposit receipt to group
-            const datosCliente = {
-                nombre: datos?.guest_name || datos?.nombre || 'Cliente desconocido'
-            };
-            
-            let infoReserva = null;
-            if (datos?.reservation_id) {
-                infoReserva = `📋 *INFORMACIÓN DE RESERVA*\n\n` +
-                             `🆔 ID de reserva: ${datos.reservation_id}\n` +
-                             `👤 Huésped: ${datos.guest_name || 'No especificado'}\n` +
-                             `📱 Teléfono: ${datos.phone_number || 'No especificado'}`;
-            }
-            
-            await reenviarComprobanteAlGrupo(bot, mensajeObj, datosCliente, infoReserva);
-
-            // ✅ ENVIAR COMANDO /reservado MEJORADO
-            try {
-                let idReserva = null;
-                
-                // 1. Buscar por ID en los datos del estado
-                if (datos && (datos.reservation_id || datos._id)) {
-                    idReserva = datos.reservation_id || datos._id;
-                    console.log(`[DEBUG] ID encontrado en datos del estado: ${idReserva}`);
-                } 
-                // 2. Buscar por teléfono en los datos del estado
-                else if (datos && datos.telefono) {
-                    const { normalizePhoneNumber } = require('../../services/reservaService');
-                    const phoneNormalized = normalizePhoneNumber(datos.telefono);
-                    console.log(`[DEBUG] Buscando reserva reciente para teléfono: ${phoneNormalized}`);
-                    
-                    // Buscar la reserva MÁS RECIENTE con estado 'pendiente' del usuario
-                    const { runQuery } = require('../../db');
-                    const sql = `
-                        SELECT r.reservation_id 
-                        FROM Reservations r
-                        JOIN Users u ON r.user_id = u.user_id
-                        WHERE u.phone_number = ? 
-                        AND r.status = 'pendiente'
-                        ORDER BY r.created_at DESC
-                        LIMIT 1
-                    `;
-                    const rows = await runQuery(sql, [phoneNormalized]);
-                    
-                    if (rows && rows.length > 0) {
-                        idReserva = rows[0].reservation_id;
-                        console.log(`[DEBUG] ID encontrado por teléfono: ${idReserva}`);
-                    } else {
-                        console.log(`[DEBUG] No se encontró reserva pendiente para ${phoneNormalized}`);
-                    }
-                }
-                // 3. Buscar por el número del remitente directamente
-                else {
-                    const { normalizePhoneNumber } = require('../../services/reservaService');
-                    const phoneFromSender = normalizePhoneNumber(remitente.replace('@s.whatsapp.net', ''));
-                    console.log(`[DEBUG] Buscando reserva reciente para remitente: ${phoneFromSender}`);
-                    
-                    const { runQuery } = require('../../db');
-                    const sql = `
-                        SELECT r.reservation_id 
-                        FROM Reservations r
-                        JOIN Users u ON r.user_id = u.user_id
-                        WHERE u.phone_number = ? 
-                        AND r.status = 'pendiente'
-                        ORDER BY r.created_at DESC
-                        LIMIT 1
-                    `;
-                    const rows = await runQuery(sql, [phoneFromSender]);
-                    
-                    if (rows && rows.length > 0) {
-                        idReserva = rows[0].reservation_id;
-                        console.log(`[DEBUG] ID encontrado por remitente: ${idReserva}`);
-                    } else {
-                        console.log(`[DEBUG] No se encontró reserva pendiente para remitente ${phoneFromSender}`);
-                    }
-                }
-                
-                // ✅ Enviar SOLO el comando /reservado sin texto adicional
-                if (idReserva) {
-                    console.log(`[DEBUG] Enviando comando /reservado ${idReserva} al grupo`);
-                    logger.info('Reserva disponible para confirmación en API administrativa', { reservationId: idReserva });
-                } else {
-                    console.log(`[ERROR] No se pudo determinar el ID de la reserva`);
-                }
-            } catch (error) {
-                console.error(`[ERROR] Error enviando comando /reservado: ${error.message}`);
-            }
-
-            return;
-        }
-
         // Router de estados
+        const mensajeReserva = mensajeObj?.message || mensaje;
         const stateHandlers = {
             MENU_PRINCIPAL: () => handleMenuState(bot, remitente, mensajeTexto, estado, establecerEstado),
             LISTA_CABAÑAS: () => handleMenuState(bot, remitente, mensajeTexto, estado, establecerEstado),
@@ -176,15 +87,15 @@ async function procesarMensaje(bot, remitente, mensaje, mensajeObj) {
             actividades: () => handleActividadesState(bot, remitente, mensajeTexto, establecerEstado),
             post_actividad: () => handlePostActividadState(bot, remitente, mensajeTexto, establecerEstado),
             // Flujo de reserva
-            [ESTADOS_RESERVA.FECHAS]: () => handleReservaState(bot, remitente, mensajeTexto, estado, datos, mensaje),
-            [ESTADOS_RESERVA.CONFIRMAR_FECHAS]: () => handleReservaState(bot, remitente, mensajeTexto, estado, datos, mensaje),
-            [ESTADOS_RESERVA.NOMBRE]: () => handleReservaState(bot, remitente, mensajeTexto, estado, datos, mensaje),
-            [ESTADOS_RESERVA.TELEFONO]: () => handleReservaState(bot, remitente, mensajeTexto, estado, datos, mensaje),
-            [ESTADOS_RESERVA.PERSONAS]: () => handleReservaState(bot, remitente, mensajeTexto, estado, datos, mensaje),
-            [ESTADOS_RESERVA.ALOJAMIENTO]: () => handleReservaState(bot, remitente, mensajeTexto, estado, datos, mensaje),
-            [ESTADOS_RESERVA.CONDICIONES]: () => handleReservaState(bot, remitente, mensajeTexto, estado, datos, mensaje),
-            [ESTADOS_RESERVA.ESPERANDO_PAGO]: () => handleReservaState(bot, remitente, mensajeTexto, estado, datos, mensaje),
-            [ESTADOS_RESERVA.ESPERANDO_CONFIRMACION]: () => handleReservaState(bot, remitente, mensajeTexto, estado, datos, mensaje),
+            [ESTADOS_RESERVA.FECHAS]: () => handleReservaState(bot, remitente, mensajeTexto, estado, datos, mensajeReserva),
+            [ESTADOS_RESERVA.CONFIRMAR_FECHAS]: () => handleReservaState(bot, remitente, mensajeTexto, estado, datos, mensajeReserva),
+            [ESTADOS_RESERVA.NOMBRE]: () => handleReservaState(bot, remitente, mensajeTexto, estado, datos, mensajeReserva),
+            [ESTADOS_RESERVA.TELEFONO]: () => handleReservaState(bot, remitente, mensajeTexto, estado, datos, mensajeReserva),
+            [ESTADOS_RESERVA.PERSONAS]: () => handleReservaState(bot, remitente, mensajeTexto, estado, datos, mensajeReserva),
+            [ESTADOS_RESERVA.ALOJAMIENTO]: () => handleReservaState(bot, remitente, mensajeTexto, estado, datos, mensajeReserva),
+            [ESTADOS_RESERVA.CONDICIONES]: () => handleReservaState(bot, remitente, mensajeTexto, estado, datos, mensajeReserva),
+            [ESTADOS_RESERVA.ESPERANDO_PAGO]: () => handleReservaState(bot, remitente, mensajeTexto, estado, datos, mensajeReserva),
+            [ESTADOS_RESERVA.ESPERANDO_CONFIRMACION]: () => handleReservaState(bot, remitente, mensajeTexto, estado, datos, mensajeReserva),
             // Estados post-reserva
             'post_reserva_menu': () => manejarPostReservaMenu(bot, remitente, mensajeTexto, establecerEstado, datos),
             'post_reserva_no_reserva': () => manejarNoReserva(bot, remitente, mensajeTexto, establecerEstado),
@@ -433,7 +344,6 @@ async function procesarComprobantePostReserva(bot, remitente, mensajeObj, establ
     console.log('### FUNCIÓN procesarComprobantePostReserva LLAMADA ###');
     
     try {
-        const Reserva = require('../../models/Reserva');
         const reserva = datos?.reserva;
         
         if (!reserva) {
@@ -444,39 +354,12 @@ async function procesarComprobantePostReserva(bot, remitente, mensajeObj, establ
             return;
         }
         
-        // Aquí procesarías el comprobante (imagen/documento)
-        // Por ahora simulamos que se procesa correctamente
-        
-        // Actualizar la reserva para indicar que se recibió el comprobante
-        // PERO MANTENER EL ESTADO EN 'pendiente' (como corregimos antes)
-        await Reserva.updateComprobante(reserva.reservation_id, 'comprobante_recibido_via_post_reserva');
-        
-        // Reenviar al grupo de administradores
-        const datosCliente = {
-            nombre: reserva.guest_name || 'Cliente desconocido'
-        };
-        
-        const infoReserva = `📋 *INFORMACIÓN DE RESERVA*\n\n` +
-                           `🆔 ID de reserva: ${reserva.reservation_id}\n` +
-                           `👤 Huésped: ${reserva.guest_name}\n` +
-                           `📅 Check-in: ${reserva.check_in_date}\n` +
-                           `📅 Check-out: ${reserva.check_out_date}\n` +
-                           `📱 Teléfono: ${reserva.phone_number}\n` +
-                           `📋 Estado: ${reserva.status}`;
-        
-        await reenviarComprobanteAlGrupo(bot, mensajeObj, datosCliente, infoReserva);
-        
-        // ✅ ENVIAR COMANDO /reservado también en post-reserva
-        try {
-            if (reserva && reserva.reservation_id) {
-                console.log(`[DEBUG] Enviando comando /reservado ${reserva.reservation_id} desde post-reserva`);
-                logger.info('Reserva disponible para confirmación en API administrativa', { reservationId: reserva.reservation_id });
-            } else {
-                console.log(`[ERROR] No se encontró reservation_id en post-reserva`);
-            }
-        } catch (error) {
-            console.error(`[ERROR] Error enviando comando /reservado en post-reserva: ${error.message}`);
-        }
+        const { descargarMedia } = require('../../utils/mediaUtils');
+        const { guardarComprobante } = require('../../services/comprobanteService');
+        const { notifyWhatsAppAdmins } = require('../../services/whatsappAdminService');
+        const { buffer, mimetype, nombreArchivo } = await descargarMedia(mensajeObj.message || mensajeObj);
+        await guardarComprobante(reserva.reservation_id, buffer, mimetype, nombreArchivo);
+        await notifyWhatsAppAdmins(bot, reserva.reservation_id);
         
         await sendMessageWithDelay(bot, remitente, {
             text: '✅ *COMPROBANTE RECIBIDO*\n\n' +

@@ -10,7 +10,8 @@ async function descargarMedia(mensaje) {
   } else if (mensaje.documentMessage) {
     tipoMedia = 'document';
     mediaMessage = mensaje.documentMessage;
-    extension = mediaMessage.fileName.split('.').pop() || 'bin';
+    const originalName = mediaMessage.filename || mediaMessage.fileName || 'comprobante.pdf';
+    extension = originalName.includes('.') ? originalName.split('.').pop() : 'bin';
   } else {
     throw new Error('Tipo multimedia no soportado');
   }

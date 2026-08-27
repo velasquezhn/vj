@@ -14,6 +14,7 @@ const {
 } = require('../middleware/apiValidation');
 const logger = require('../config/logger');
 const { COMPROBANTES_DIR, ALLOWED_MIME_TYPES, MAX_RECEIPT_BYTES } = require('../services/comprobanteService');
+const { approveReservation, rejectReservation } = require('../services/reservationApprovalService');
 
 // Setup multer for file uploads to public/comprobantes
 const storage = multer.diskStorage({
@@ -132,7 +133,8 @@ router.get('/',
   try {
     let sql = `
       SELECT r.reservation_id, r.cabin_id, r.user_id, r.start_date, r.end_date, r.status, r.total_price, r.comprobante_nombre_archivo,
-             r.personas,
+             r.personas, r.confirmation_code, r.receipt_received_at, r.reviewed_at, r.reviewed_by,
+             r.rejection_reason, r.notification_status,
              u.name AS user_name,
              u.phone_number AS phone_number,
              c.name AS cabin_name,
@@ -215,6 +217,67 @@ router.get('/',
     });
   }
 });
+
+// POST /:id/approve - aprobación operativa desde el panel (reemplaza comandos de grupo)
+router.post('/:id/approve',
+  authenticateToken,
+  validateNumericId('id'),
+  logAdminActivity('approve_reservation'),
+  async (req, res) => {
+    try {
+      const result = await approveReservation(req.params.id, req.user.adminId);
+      if (!result.ok) {
+        return res.status(result.status).json({
+          success: false,
+          code: result.code,
+          currentStatus: result.currentStatus
+        });
+      }
+      return res.json({
+        success: true,
+        message: result.alreadyProcessed ? 'La reserva ya estaba confirmada' : 'Reserva confirmada',
+        data: result.reservation,
+        notificationSent: result.reservation.notification_status === 'sent'
+      });
+    } catch (error) {
+      logger.error('Error aprobando reserva', { reservationId: req.params.id, error: error.message });
+      return res.status(500).json({ success: false, code: 'APPROVAL_ERROR' });
+    }
+  }
+);
+
+// POST /:id/reject - rechazo con motivo y aviso al huésped
+router.post('/:id/reject',
+  authenticateToken,
+  validateNumericId('id'),
+  sanitizeRequestData,
+  logAdminActivity('reject_reservation'),
+  async (req, res) => {
+    const reason = String(req.body?.reason || '').trim();
+    if (reason.length < 3 || reason.length > 300) {
+      return res.status(400).json({ success: false, code: 'INVALID_REJECTION_REASON' });
+    }
+    try {
+      const result = await rejectReservation(req.params.id, req.user.adminId, reason);
+      if (!result.ok) {
+        return res.status(result.status).json({
+          success: false,
+          code: result.code,
+          currentStatus: result.currentStatus
+        });
+      }
+      return res.json({
+        success: true,
+        message: 'Solicitud rechazada',
+        data: result.reservation,
+        notificationSent: result.reservation.notification_status === 'sent'
+      });
+    } catch (error) {
+      logger.error('Error rechazando reserva', { reservationId: req.params.id, error: error.message });
+      return res.status(500).json({ success: false, code: 'REJECTION_ERROR' });
+    }
+  }
+);
 
 /**
  * @swagger

@@ -4,6 +4,7 @@ const request = require('supertest');
 const { createWhatsAppWebhook, verifySignature, extractEvents, messageText, normalizeInteractiveReply } = require('../routes/whatsappWebhook');
 const { WhatsAppCloudService, normalizeRecipient } = require('../services/whatsappCloudService');
 const { sendReplyButtons, sendList } = require('../services/whatsappInteractiveService');
+const { parseReservationId, isAdminSender, reviewText } = require('../services/whatsappAdminService');
 
 const config = {
   apiVersion: 'v26.0', accessToken: 'test-token', phoneNumberId: '12345',
@@ -110,5 +111,19 @@ describe('WhatsApp Business Cloud API', () => {
   test('extrae mensajes y estados de entrega', () => {
     const events = extractEvents({ entry: [{ changes: [{ value: { messages: [{ id: '1' }], statuses: [{ id: '2', status: 'delivered' }] } }] }] });
     expect(events.map((event) => event.kind).sort()).toEqual(['message', 'status']);
+  });
+
+  test('restringe y entiende comandos administrativos de WhatsApp', async () => {
+    process.env.WHATSAPP_ADMIN_NUMBERS = '50487373838, 50492083526';
+    expect(await isAdminSender('50487373838@s.whatsapp.net')).toBe(true);
+    expect(await isAdminSender('50411112222@s.whatsapp.net')).toBe(false);
+    expect(parseReservationId('VJ-000123')).toBe(123);
+    expect(parseReservationId('/aprobar 45')).toBe(45);
+    expect(reviewText({
+      reservation_id: 1, confirmation_code: 'VJ-000001', user_name: 'Ana', phone_number: '50499990000',
+      cabin_name: 'Tortuga 1', start_date: '2026-09-01', end_date: '2026-09-03', personas: 2,
+      total_price: 3000, comprobante_nombre_archivo: null
+    })).toContain('VJ-000001');
+    delete process.env.WHATSAPP_ADMIN_NUMBERS;
   });
 });

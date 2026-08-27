@@ -24,6 +24,17 @@ async function guardarComprobante(reservaId, buffer, mimetype, nombreArchivo) {
     // Store relative path in DB
     const relativePath = `/comprobantes/${path.basename(filePath)}`;
     const resultado = await Reserva.updateComprobante(reservaId, null, null, relativePath);
+    if (!resultado) {
+      await fs.promises.unlink(filePath).catch(() => undefined);
+      throw new Error('Reserva no encontrada para asociar el comprobante');
+    }
+    const { runExecute } = require('../db');
+    await runExecute(
+      `UPDATE Reservations
+       SET receipt_received_at = CURRENT_TIMESTAMP, notification_status = NULL, updated_at = CURRENT_TIMESTAMP
+       WHERE reservation_id = ?`,
+      [reservaId]
+    );
     return resultado;
   } catch (error) {
     console.error('Error guardando comprobante:', error);

@@ -43,6 +43,8 @@ Copie `.env.example`; nunca versione `.env` ni credenciales.
 - `WHATSAPP_PHONE_NUMBER_ID`: ID del número, no el número visible.
 - `WHATSAPP_VERIFY_TOKEN`: valor aleatorio elegido por el propietario.
 - `META_APP_SECRET`: secreto para validar `X-Hub-Signature-256`.
+- `WHATSAPP_ADMIN_NUMBERS`: respaldo opcional para números autorizados, separados por coma y con código de país. La lista normal se administra desde **Configuración > Administradores de WhatsApp** en el panel.
+- `PUBLIC_BASE_URL`: URL HTTPS pública del backend, usada para abrir comprobantes desde los avisos administrativos.
 - `OPENWEATHER_API_KEY`: opcional; habilita el pronóstico del menú sin guardar la clave en el código.
 
 ## Configuración de Meta
@@ -62,6 +64,17 @@ El webhook procesa texto, botones, listas, imágenes, documentos y estados. Los 
 El menú principal, los alojamientos y las experiencias usan listas interactivas oficiales de Meta. La confirmación de fechas, la aceptación de condiciones y las acciones posteriores usan botones de respuesta. Los identificadores de botones se convierten a comandos internos estables, por lo que las respuestas numéricas escritas siguen siendo compatibles. Si Meta no acepta temporalmente un mensaje interactivo, el bot envía automáticamente una alternativa en texto.
 
 Los mensajes interactivos solo pueden enviarse dentro de la ventana de atención iniciada por el huésped. Para iniciar conversaciones fuera de esa ventana se debe crear y aprobar una plantilla en WhatsApp Manager; las plantillas no se usan para navegar los menús.
+
+### Aprobación de reservas
+
+La confirmación ya no depende de grupos ni de Baileys. Al aceptar las condiciones se crea una solicitud `pendiente` con código `VJ-000001`; el comprobante recibido queda asociado a esa solicitud. Después puede revisarse de dos maneras equivalentes:
+
+- En el panel: abrir **Reservas**, revisar el comprobante y pulsar aprobar o rechazar.
+- En WhatsApp: cada número activo registrado en **Configuración > Administradores de WhatsApp** recibe botones privados. También admite `/aprobar VJ-000001`, `/rechazar VJ-000001 motivo` y `/reserva VJ-000001`.
+
+Los números se escriben con código de país y solo dígitos (por ejemplo, `504XXXXXXXX`). Pueden editarse, desactivarse o eliminarse sin modificar Railway. Cada administrador debe enviar `/admin` al número de Villas Julie antes de una demostración; `/cliente` permite volver a probar el flujo como huésped.
+
+La aprobación vuelve a comprobar disponibilidad, registra administrador y fecha de revisión, actualiza el estado y notifica al huésped. Si WhatsApp no permite el aviso por estar fuera de la ventana de 24 horas, la reserva conserva la decisión y muestra `notification_status=failed` para seguimiento.
 
 ## Base de datos y Docker
 

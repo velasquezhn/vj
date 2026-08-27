@@ -51,6 +51,8 @@ CREATE TABLE IF NOT EXISTS Reservations (
   reservation_id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, cabin_id INTEGER NOT NULL,
   start_date TEXT NOT NULL, end_date TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pendiente', total_price REAL NOT NULL DEFAULT 0,
   personas INTEGER NOT NULL DEFAULT 1, comprobante_nombre_archivo TEXT, grupoMessageId TEXT,
+  confirmation_code TEXT UNIQUE, receipt_received_at TEXT, reviewed_at TEXT, reviewed_by INTEGER,
+  rejection_reason TEXT, notification_status TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CHECK (date(end_date) > date(start_date)), CHECK (personas > 0),
   FOREIGN KEY (user_id) REFERENCES Users(user_id), FOREIGN KEY (cabin_id) REFERENCES Cabins(cabin_id)
@@ -81,6 +83,14 @@ CREATE TABLE IF NOT EXISTS WhatsAppEvents (
   message_id TEXT PRIMARY KEY, event_type TEXT NOT NULL, status TEXT, received_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   processed_at TEXT, error TEXT
 );
+CREATE TABLE IF NOT EXISTS WhatsAppAdmins (
+  whatsapp_admin_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  phone_number TEXT UNIQUE NOT NULL,
+  display_name TEXT NOT NULL DEFAULT '',
+  is_active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 CREATE INDEX IF NOT EXISTS idx_reservations_dates ON Reservations(cabin_id, start_date, end_date, status);
 CREATE INDEX IF NOT EXISTS idx_reservations_user ON Reservations(user_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_user_states_expires ON UserStates(expires_at);
@@ -91,7 +101,11 @@ INSERT OR IGNORE INTO SchemaMigrations(version) VALUES (1);
 const compatibilityColumns = {
   Admins: ['last_login TEXT'],
   Cabins: ['cabin_type_id INTEGER', 'base_price REAL DEFAULT 0', 'price_per_night REAL DEFAULT 0', 'price_per_additional_person REAL DEFAULT 0', 'is_active INTEGER DEFAULT 1'],
-  Reservations: ['personas INTEGER DEFAULT 1', 'comprobante_nombre_archivo TEXT', 'grupoMessageId TEXT'],
+  Reservations: [
+    'personas INTEGER DEFAULT 1', 'comprobante_nombre_archivo TEXT', 'grupoMessageId TEXT',
+    'confirmation_code TEXT', 'receipt_received_at TEXT', 'reviewed_at TEXT', 'reviewed_by INTEGER',
+    'rejection_reason TEXT', 'notification_status TEXT'
+  ],
   ConversationStates: ['user_number TEXT', 'created_at TEXT', 'updated_at TEXT'],
   Activities: ['activity_key TEXT', 'nombre TEXT', 'categoria TEXT', 'subcategoria TEXT', 'descripcion TEXT', 'descripcion_corta TEXT', 'ubicacion TEXT', 'contacto TEXT', 'horarios TEXT', 'precios TEXT', 'servicios TEXT', 'dificultad TEXT', 'duracion TEXT', 'capacidad_maxima INTEGER', 'edad_minima INTEGER', 'idiomas TEXT', 'recomendaciones TEXT', 'disponibilidad TEXT', 'multimedia TEXT', 'calificacion TEXT', 'certificaciones TEXT', 'orden INTEGER DEFAULT 999', 'activo INTEGER DEFAULT 1', 'incluir_en_menu INTEGER DEFAULT 1', 'orden_menu INTEGER DEFAULT 999']
 };
@@ -105,6 +119,7 @@ async function migrate() {
       if (!columns.has(name)) await exec(`ALTER TABLE "${table}" ADD COLUMN ${definition}`);
     }
   }
+  await exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_reservations_confirmation_code ON Reservations(confirmation_code)');
   console.log(`Database migrated: ${dbPath}`);
 }
 
