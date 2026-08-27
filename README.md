@@ -101,6 +101,8 @@ Al agregar un administrador, el sistema intenta enviarle una confirmación y ree
 
 La aprobación vuelve a comprobar disponibilidad, registra administrador y fecha de revisión, actualiza el estado y notifica al huésped. Si Meta o la red fallan temporalmente, el aviso queda en `notification_status=queued` y se reintenta desde una cola persistente aun después de reiniciar el servidor. El superadministrador puede revisar y reintentar entregas desde **Mensajes pendientes**; después de agotar los intentos se marca como fallida para atención manual.
 
+El **Dashboard** muestra tareas operativas pendientes y métricas calculadas con reservas confirmadas. **Reportes** permite elegir un período, revisar ocupación por cabaña y descargar un Excel de reservas. El “valor confirmado” representa el valor contractual de las reservas, no un registro contable de dinero efectivamente recibido.
+
 ## Base de datos y Docker
 
 ```bash

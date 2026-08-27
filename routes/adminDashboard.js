@@ -2,6 +2,11 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const analyticsService = require('../services/analyticsService');
+const ExcelJS = require('exceljs');
+
+function validIsoDate(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(value || '')) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
+}
 
 /**
  * @swagger
@@ -545,6 +550,54 @@ router.get('/trends', async (req, res) => {
       error: 'INTERNAL_SERVER_ERROR'
     });
   }
+});
+
+router.get('/export', async (req, res, next) => {
+  try {
+    const endDate = req.query.end_date || new Date().toISOString().slice(0, 10);
+    const startDate = req.query.start_date || `${endDate.slice(0, 4)}-01-01`;
+    if (!validIsoDate(startDate) || !validIsoDate(endDate) || startDate > endDate) {
+      return res.status(400).json({ success: false, message: 'El rango de fechas no es válido', error: 'INVALID_DATE_RANGE' });
+    }
+    const reservations = await db.runQuery(`
+      SELECT r.confirmation_code, r.start_date, r.end_date, r.status, r.personas, r.total_price,
+        r.payment_authorized_at, r.receipt_received_at, r.reviewed_at,
+        u.name AS guest_name, u.phone_number, c.name AS cabin_name
+      FROM Reservations r
+      JOIN Users u ON u.user_id = r.user_id
+      JOIN Cabins c ON c.cabin_id = r.cabin_id
+      WHERE date(r.start_date) <= date(?) AND date(r.end_date) >= date(?)
+      ORDER BY date(r.start_date), c.name
+    `, [endDate, startDate]);
+
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'Villas Julie';
+    workbook.created = new Date();
+    const sheet = workbook.addWorksheet('Reservas');
+    sheet.columns = [
+      { header: 'Código', key: 'code', width: 16 }, { header: 'Huésped', key: 'guest', width: 28 },
+      { header: 'Teléfono', key: 'phone', width: 18 }, { header: 'Cabaña', key: 'cabin', width: 25 },
+      { header: 'Entrada', key: 'start', width: 14 }, { header: 'Salida', key: 'end', width: 14 },
+      { header: 'Personas', key: 'people', width: 11 }, { header: 'Estado', key: 'status', width: 24 },
+      { header: 'Valor (HNL)', key: 'value', width: 16 }, { header: 'Pago autorizado', key: 'payment', width: 22 },
+      { header: 'Comprobante recibido', key: 'receipt', width: 22 }, { header: 'Revisada', key: 'reviewed', width: 22 }
+    ];
+    for (const item of reservations) sheet.addRow({
+      code: item.confirmation_code || '', guest: item.guest_name || '', phone: item.phone_number || '', cabin: item.cabin_name || '',
+      start: item.start_date, end: item.end_date, people: item.personas, status: item.status, value: Number(item.total_price || 0),
+      payment: item.payment_authorized_at || '', receipt: item.receipt_received_at || '', reviewed: item.reviewed_at || ''
+    });
+    sheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2563EB' } };
+    sheet.autoFilter = { from: 'A1', to: 'L1' };
+    sheet.views = [{ state: 'frozen', ySplit: 1 }];
+    sheet.getColumn('value').numFmt = 'L #,##0.00';
+    const filename = `reservas-${startDate}-${endDate}.xlsx`;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    await workbook.xlsx.write(res);
+    return res.end();
+  } catch (error) { return next(error); }
 });
 
 module.exports = router;

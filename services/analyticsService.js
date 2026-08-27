@@ -4,7 +4,7 @@
  */
 
 const { runQuery } = require('../db');
-const { startOfMonth, endOfMonth, subMonths, format, parseISO } = require('date-fns');
+const { subMonths, format } = require('date-fns');
 
 class AnalyticsService {
   
@@ -21,7 +21,8 @@ class AnalyticsService {
         this.getOccupancyRate(),
         this.getAverageReservationValue(),
         this.getNewUsersThisMonth(),
-        this.getRevenueGrowth()
+        this.getRevenueGrowth(),
+        this.getOperationalAlerts()
       ]);
 
       return {
@@ -33,6 +34,7 @@ class AnalyticsService {
         averageReservationValue: queries[5],
         newUsersThisMonth: queries[6],
         revenueGrowth: queries[7],
+        operationalAlerts: queries[8],
         lastUpdated: new Date().toISOString()
       };
     } catch (error) {
@@ -58,7 +60,7 @@ class AnalyticsService {
               SUM(total_price) as total_revenue,
               AVG(total_price) as avg_reservation_value
             FROM Reservations 
-            WHERE status IN ('confirmado', 'completado')
+            WHERE status IN ('confirmada', 'confirmado', 'completada', 'completado')
               AND start_date >= date('now', '-30 days')
             GROUP BY DATE(start_date)
             ORDER BY period_date ASC
@@ -74,7 +76,7 @@ class AnalyticsService {
               SUM(total_price) as total_revenue,
               AVG(total_price) as avg_reservation_value
             FROM Reservations 
-            WHERE status IN ('confirmado', 'completado')
+            WHERE status IN ('confirmada', 'confirmado', 'completada', 'completado')
               AND start_date >= date('now', '-12 weeks')
             GROUP BY strftime('%Y-W%W', start_date)
             ORDER BY period_date ASC
@@ -91,7 +93,7 @@ class AnalyticsService {
               AVG(total_price) as avg_reservation_value,
               COUNT(DISTINCT user_id) as unique_customers
             FROM Reservations 
-            WHERE status IN ('confirmado', 'completado')
+            WHERE status IN ('confirmada', 'confirmado', 'completada', 'completado')
               AND start_date >= date('now', '-${months} months')
             GROUP BY strftime('%Y-%m', start_date)
             ORDER BY period_date ASC
@@ -140,28 +142,28 @@ class AnalyticsService {
           c.capacity,
           c.price,
           COUNT(r.reservation_id) as total_reservations,
-          SUM(julianday(r.end_date) - julianday(r.start_date)) as total_nights_booked,
+          COALESCE(SUM(MAX(0, julianday(MIN(date(r.end_date), date(?, '+1 day'))) - julianday(MAX(date(r.start_date), date(?))))), 0) as total_nights_booked,
           SUM(r.total_price) as total_revenue,
           AVG(r.total_price) as avg_reservation_value,
           COUNT(DISTINCT r.user_id) as unique_guests,
           
           -- Calcular tasa de ocupación
           ROUND(
-            (SUM(julianday(r.end_date) - julianday(r.start_date)) * 100.0) / 
-            (julianday(?) - julianday(?)), 2
+            (COALESCE(SUM(MAX(0, julianday(MIN(date(r.end_date), date(?, '+1 day'))) - julianday(MAX(date(r.start_date), date(?))))), 0) * 100.0) /
+            (julianday(date(?, '+1 day')) - julianday(?)), 2
           ) as occupancy_rate
           
         FROM Cabins c
         LEFT JOIN Reservations r ON c.cabin_id = r.cabin_id 
-          AND r.status IN ('confirmado', 'completado')
-          AND r.start_date >= ?
-          AND r.end_date <= ?
+          AND r.status IN ('confirmada', 'confirmado', 'completada', 'completado')
+          AND date(r.start_date) < date(?, '+1 day')
+          AND date(r.end_date) > date(?)
         WHERE c.is_active = 1
         GROUP BY c.cabin_id, c.name, c.capacity, c.price
         ORDER BY total_revenue DESC
       `;
 
-      const results = await runQuery(sql, [end, start, start, end]);
+      const results = await runQuery(sql, [end, start, end, start, end, start, end, start]);
       
       return {
         period: { start, end },
@@ -209,7 +211,7 @@ class AnalyticsService {
             AVG(r.total_price) as avg_reservation_value
           FROM Users u
           LEFT JOIN Reservations r ON u.user_id = r.user_id
-          WHERE r.status IN ('confirmado', 'completado')
+          WHERE r.status IN ('confirmada', 'confirmado', 'completada', 'completado')
           GROUP BY u.user_id, u.name, u.phone_number
           HAVING total_reservations > 0
           ORDER BY lifetime_value DESC
@@ -225,7 +227,7 @@ class AnalyticsService {
           FROM Users u
           JOIN Reservations r ON u.user_id = r.user_id
           WHERE u.created_at >= date('now', '-30 days')
-            AND r.status IN ('confirmado', 'completado')
+            AND r.status IN ('confirmada', 'confirmado', 'completada', 'completado')
           
           UNION ALL
           
@@ -236,7 +238,7 @@ class AnalyticsService {
           FROM Users u
           JOIN Reservations r ON u.user_id = r.user_id
           WHERE u.created_at < date('now', '-30 days')
-            AND r.status IN ('confirmado', 'completado')
+            AND r.status IN ('confirmada', 'confirmado', 'completada', 'completado')
             AND r.created_at >= date('now', '-30 days')
         `),
 
@@ -302,7 +304,7 @@ class AnalyticsService {
           AVG(total_price) as avg_price,
           strftime('%w', start_date) as day_number
         FROM Reservations
-        WHERE status IN ('confirmado', 'completado')
+        WHERE status IN ('confirmada', 'confirmado', 'completada', 'completado')
           AND start_date >= date('now', '-3 months')
         GROUP BY strftime('%w', start_date)
         ORDER BY day_number
@@ -330,7 +332,7 @@ class AnalyticsService {
           AVG(total_price) as avg_revenue,
           SUM(total_price) as total_revenue
         FROM Reservations
-        WHERE status IN ('confirmado', 'completado')
+        WHERE status IN ('confirmada', 'confirmado', 'completada', 'completado')
         GROUP BY strftime('%m', start_date)
         ORDER BY month_number
       `);
@@ -371,7 +373,7 @@ class AnalyticsService {
     const result = await runQuery(`
       SELECT SUM(total_price) as total 
       FROM Reservations 
-      WHERE status IN ('confirmado', 'completado')
+      WHERE status IN ('confirmada', 'confirmado', 'completada', 'completado')
     `);
     return parseFloat(result[0]?.total || 0);
   }
@@ -380,7 +382,7 @@ class AnalyticsService {
     const result = await runQuery(`
       SELECT COUNT(*) as count 
       FROM Reservations 
-      WHERE status = 'confirmado' 
+      WHERE status IN ('confirmada', 'confirmado')
         AND start_date >= date('now')
     `);
     return result[0]?.count || 0;
@@ -390,13 +392,17 @@ class AnalyticsService {
     const result = await runQuery(`
       SELECT 
         ROUND(
-          (COUNT(DISTINCT r.reservation_id) * 100.0) / 
+          (COALESCE(SUM(MAX(0,
+            julianday(MIN(date(r.end_date), date('now', '+1 day'))) -
+            julianday(MAX(date(r.start_date), date('now', '-29 days')))
+          )), 0) * 100.0) /
           (COUNT(DISTINCT c.cabin_id) * 30), 2
         ) as rate
       FROM Cabins c
       LEFT JOIN Reservations r ON c.cabin_id = r.cabin_id 
-        AND r.status IN ('confirmado', 'completado')
-        AND r.start_date >= date('now', '-30 days')
+        AND r.status IN ('confirmada', 'confirmado', 'completada', 'completado')
+        AND date(r.start_date) < date('now', '+1 day')
+        AND date(r.end_date) > date('now', '-29 days')
       WHERE c.is_active = 1
     `);
     return parseFloat(result[0]?.rate || 0);
@@ -406,7 +412,7 @@ class AnalyticsService {
     const result = await runQuery(`
       SELECT AVG(total_price) as avg 
       FROM Reservations 
-      WHERE status IN ('confirmado', 'completado')
+      WHERE status IN ('confirmada', 'confirmado', 'completada', 'completado')
     `);
     return parseFloat(result[0]?.avg || 0);
   }
@@ -426,7 +432,7 @@ class AnalyticsService {
         strftime('%Y-%m', start_date) as month,
         SUM(total_price) as revenue
       FROM Reservations 
-      WHERE status IN ('confirmado', 'completado')
+      WHERE status IN ('confirmada', 'confirmado', 'completada', 'completado')
         AND start_date >= date('now', '-2 months')
       GROUP BY strftime('%Y-%m', start_date)
       ORDER BY month DESC
@@ -443,6 +449,21 @@ class AnalyticsService {
     }
     
     return 0;
+  }
+
+  async getOperationalAlerts() {
+    const rows = await runQuery(`
+      SELECT
+        SUM(CASE WHEN status = 'pendiente_autorizacion' THEN 1 ELSE 0 END) AS pendingAuthorization,
+        SUM(CASE WHEN status = 'esperando_pago' THEN 1 ELSE 0 END) AS awaitingPayment,
+        SUM(CASE WHEN status = 'pendiente_verificacion' THEN 1 ELSE 0 END) AS pendingReceiptReview,
+        SUM(CASE WHEN status IN ('confirmada', 'confirmado') AND date(start_date) = date('now') THEN 1 ELSE 0 END) AS checkInsToday,
+        SUM(CASE WHEN status IN ('confirmada', 'confirmado') AND date(end_date) = date('now') THEN 1 ELSE 0 END) AS checkOutsToday,
+        SUM(CASE WHEN status = 'esperando_pago' AND datetime(payment_due_at) < datetime('now') THEN 1 ELSE 0 END) AS expiredPayments
+      FROM Reservations
+    `);
+    const row = rows[0] || {};
+    return Object.fromEntries(Object.entries(row).map(([key, value]) => [key, Number(value || 0)]));
   }
 }
 

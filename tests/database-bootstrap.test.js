@@ -238,5 +238,17 @@ describe('database bootstrap', () => {
       status: 'confirmada', reviewed_by: 99, notification_status: 'sent'
     }));
     expect(approved[0].reviewed_at).toBeTruthy();
+
+    const analyticsScript = `
+      const analytics = require('./services/analyticsService');
+      const { closeDatabase } = require('./db');
+      (async () => {
+        const metrics = await analytics.getDashboardMetrics();
+        if (metrics.totalRevenue !== 3000 || metrics.averageReservationValue !== 3000) process.exitCode = 8;
+        if (!metrics.operationalAlerts || typeof metrics.operationalAlerts.pendingAuthorization !== 'number') process.exitCode = 9;
+        await closeDatabase();
+      })().catch((error) => { console.error(error); process.exit(1); });
+    `;
+    execFileSync(process.execPath, ['-e', analyticsScript], { cwd: path.join(__dirname, '..'), env });
   });
 });
