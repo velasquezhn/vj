@@ -77,6 +77,8 @@ La confirmación ya no depende de grupos ni de Baileys. Al aceptar las condicion
 
 Los números se escriben con código de país y solo dígitos (por ejemplo, `504XXXXXXXX`). Pueden editarse, desactivarse o eliminarse sin modificar Railway. Cada administrador debe enviar `/admin` al número de Villas Julie antes de una demostración; `/cliente` permite volver a probar el flujo como huésped.
 
+Al agregar un administrador, el sistema intenta enviarle una confirmación y reenvía hasta cinco solicitudes pendientes con comprobante. El botón **Enviar prueba** permite repetirlo. Si Meta lo bloquea, el panel conserva el número y muestra la instrucción de enviar `/admin` desde ese teléfono para abrir la ventana de 24 horas.
+
 La aprobación vuelve a comprobar disponibilidad, registra administrador y fecha de revisión, actualiza el estado y notifica al huésped. Si WhatsApp no permite el aviso por estar fuera de la ventana de 24 horas, la reserva conserva la decisión y muestra `notification_status=failed` para seguimiento.
 
 ## Base de datos y Docker

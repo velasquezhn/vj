@@ -4,6 +4,7 @@ const { sendReplyButtons } = require('./whatsappInteractiveService');
 const { approveReservation, rejectReservation, getReservationForReview } = require('./reservationApprovalService');
 const { obtenerEstado, establecerEstado } = require('./stateService');
 const { activeAdminNumbers } = require('./whatsappAdminSettingsService');
+const { runQuery } = require('../db');
 
 async function getAdminNumbers() {
   const configured = await activeAdminNumbers();
@@ -87,6 +88,27 @@ async function notifyWhatsAppAdmins(bot, reservationId) {
     }
   }
   return { sent, failed };
+}
+
+async function sendPendingReviewsToAdmin(bot, phoneNumber, limit = 5) {
+  const rows = await runQuery(`SELECT reservation_id FROM Reservations
+    WHERE status = 'pendiente' AND comprobante_nombre_archivo IS NOT NULL
+    ORDER BY receipt_received_at DESC, reservation_id DESC LIMIT ?`, [Math.min(Math.max(Number(limit) || 5, 1), 10)]);
+  let sent = 0;
+  let failed = 0;
+  for (const row of rows) {
+    try {
+      const reservation = await getReservationForReview(row.reservation_id);
+      if (reservation) await sendReview(bot, phoneNumber, reservation);
+      sent += 1;
+    } catch (error) {
+      failed += 1;
+      logger.error('No se pudo reenviar una solicitud pendiente al administrador', {
+        reservationId: row.reservation_id, code: error.response?.data?.error?.code
+      });
+    }
+  }
+  return { sent, failed, total: rows.length };
 }
 
 async function handleAdminMessage(bot, sender, text) {
@@ -179,4 +201,7 @@ async function handleAdminMessage(bot, sender, text) {
   return true;
 }
 
-module.exports = { getAdminNumbers, isAdminSender, parseReservationId, notifyWhatsAppAdmins, handleAdminMessage, reviewText };
+module.exports = {
+  getAdminNumbers, isAdminSender, parseReservationId, notifyWhatsAppAdmins,
+  sendPendingReviewsToAdmin, handleAdminMessage, reviewText
+};

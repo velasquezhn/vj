@@ -62,6 +62,27 @@ describe('database bootstrap', () => {
     expect(integrity[0].integrity_check).toBe('ok');
   });
 
+  test('reenvía solicitudes pendientes a un administrador nuevo', async () => {
+    const env = { ...process.env, DB_PATH: dbPath, NODE_ENV: 'test', WHATSAPP_ADMIN_NUMBERS: '' };
+    execFileSync(process.execPath, ['scripts/migrate-database.js'], { cwd: path.join(__dirname, '..'), env });
+    execFileSync(process.execPath, ['scripts/seed-database.js'], { cwd: path.join(__dirname, '..'), env });
+    const script = `
+      const { runExecute, runQuery, closeDatabase } = require('./db');
+      const { sendPendingReviewsToAdmin } = require('./services/whatsappAdminService');
+      (async () => {
+        const user = await runExecute("INSERT INTO Users(phone_number,name) VALUES('50499990000','Prueba')");
+        const cabin = (await runQuery('SELECT cabin_id FROM Cabins LIMIT 1'))[0];
+        await runExecute(\`INSERT INTO Reservations(user_id,cabin_id,start_date,end_date,status,total_price,personas,comprobante_nombre_archivo,confirmation_code)
+          VALUES(?,?, '2026-11-01','2026-11-03','pendiente',3000,2,'/comprobante.jpg','VJ-000001')\`, [user.lastID, cabin.cabin_id]);
+        const sent = [];
+        const result = await sendPendingReviewsToAdmin({ sendMessage: async (_to, body) => { sent.push(body); } }, '50487373838');
+        if (result.sent !== 1 || !sent.some((body) => body.interactive)) process.exitCode = 2;
+        await closeDatabase();
+      })().catch((error) => { console.error(error); process.exit(1); });
+    `;
+    execFileSync(process.execPath, ['-e', script], { cwd: path.join(__dirname, '..'), env });
+  });
+
   test('creates the pending reservation before requesting a receipt', async () => {
     const env = { ...process.env, DB_PATH: dbPath, NODE_ENV: 'test', WHATSAPP_ADMIN_NUMBERS: '' };
     execFileSync(process.execPath, ['scripts/migrate-database.js'], { cwd: path.join(__dirname, '..'), env });

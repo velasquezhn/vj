@@ -16,6 +16,11 @@ async function listAdmins() {
     created_at, updated_at FROM WhatsAppAdmins ORDER BY display_name, phone_number`);
 }
 
+async function getAdmin(id) {
+  return (await db.runQuery(`SELECT whatsapp_admin_id AS id, phone_number, display_name, is_active
+    FROM WhatsAppAdmins WHERE whatsapp_admin_id = ?`, [id]))[0] || null;
+}
+
 async function activeAdminNumbers() {
   const rows = await db.runQuery('SELECT phone_number FROM WhatsAppAdmins WHERE is_active = 1');
   return rows.map((row) => row.phone_number);
@@ -45,4 +50,4 @@ async function deleteAdmin(id) {
   return (await db.runExecute('DELETE FROM WhatsAppAdmins WHERE whatsapp_admin_id = ?', [id])).changes > 0;
 }
 
-module.exports = { validatePhone, listAdmins, activeAdminNumbers, createAdmin, updateAdmin, deleteAdmin };
+module.exports = { validatePhone, listAdmins, getAdmin, activeAdminNumbers, createAdmin, updateAdmin, deleteAdmin };
