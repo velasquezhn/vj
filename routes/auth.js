@@ -236,6 +236,7 @@ router.post('/login',
  */
 router.post('/verify', 
   sanitizeRequestData,
+  authenticateToken,
   logAdminActivity('token_verification'),
   async (req, res) => {
   try {
@@ -434,7 +435,7 @@ router.post('/change-password', authenticateToken, async (req, res) => {
     if (!rows.length || !await bcrypt.compare(currentPassword, rows[0].password_hash)) {
       return res.status(400).json({ success: false, message: 'La contraseña actual es incorrecta' });
     }
-    await runExecute(`UPDATE Admins SET password_hash = ?, must_change_password = 0,
+    await runExecute(`UPDATE Admins SET password_hash = ?, must_change_password = 0, token_version = token_version + 1,
       updated_at = datetime('now') WHERE admin_id = ?`, [await hashPassword(newPassword), req.user.adminId]);
     revokeToken(req.authToken);
     return res.json({ success: true, message: 'Contraseña actualizada. Inicia sesión nuevamente.' });

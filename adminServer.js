@@ -283,7 +283,7 @@ app.use('/auth', authRoutes);
  *       - bearerAuth: []
  */
 // Logout endpoint (requiere autenticación)
-app.post('/auth/logout', authenticateToken, (req, res) => {
+app.post('/auth/logout', authenticateToken, async (req, res) => {
   try {
     const { revokeToken } = require('./middleware/auth');
     const token = req.authToken;
@@ -291,6 +291,7 @@ app.post('/auth/logout', authenticateToken, (req, res) => {
     if (token) {
       revokeToken(token);
     }
+    await db.runExecute('UPDATE Admins SET token_version = token_version + 1 WHERE admin_id = ?', [req.user.adminId]);
     
     res.json({
       success: true,

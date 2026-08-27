@@ -13,7 +13,7 @@ const alojamientosService = require('../../services/alojamientosService');
 
 const { extractMessageText } = require('./messageProcessorUtils');
 const { sendMessageWithDelay } = require('../../utils/messageDelayUtils');
-const { isAdminSender, handleAdminMessage } = require('../../services/whatsappAdminService');
+const { isAdminSender, handleAdminMessage, notifyAdminsOfGuestRequest } = require('../../services/whatsappAdminService');
 const { handleShareExperienceResponse } = require('../../routes/shareExperience');
 const { normalizeConversationInput, reservationStart } = require('../../services/whatsappMessages');
 // const { manejarPostReserva, manejarNoReserva, procesarComprobantePostReserva } = require('../../routes/postReservaHandler'); // TEMPORALMENTE COMENTADO
@@ -142,10 +142,11 @@ async function procesarMensaje(bot, remitente, mensaje, mensajeObj) {
                         await sendMessageWithDelay(bot, remitente, {
                             text: '✅ *RESERVA CANCELADA*\n\n' +
                                   `📅 Reserva ${reserva.reservation_id} ha sido cancelada exitosamente.\n\n` +
-                                  '💰 Si realizaste algún pago, nos pondremos en contacto contigo para coordinar el reembolso según nuestras políticas.\n\n' +
+                                  '💰 Los pagos y anticipos realizados no son reembolsables.\n\n' +
                                   '📞 Cualquier consulta, no dudes en contactarnos.\n\n' +
                                   'Escribe "menu" para volver al menú principal.'
                         });
+                        await notifyAdminsOfGuestRequest(bot, { guestNumber: remitente, reservation: reserva, requestType: 'cancellation' });
                         await establecerEstado(remitente, null);
                     } catch (error) {
                         console.error('Error cancelando reserva:', error);
@@ -277,11 +278,12 @@ async function manejarPostReservaMenu(bot, remitente, mensaje, establecerEstado,
                 // Modificar reserva
                 await sendMessageWithDelay(bot, remitente, {
                     text: '✏️ *MODIFICAR RESERVA*\n\n' +
-                          'Para modificar tu reserva, un agente te asistirá.\n\n' +
-                          '📞 En breve nos pondremos en contacto contigo.\n' +
-                          '⏰ Horario de atención: 9:00 AM - 6:00 PM\n\n' +
+                          'Avisamos a los administradores para que uno de ellos te escriba por privado. Los cambios dependen de disponibilidad.\n\n' +
+                          '📞 Te contactarán a este mismo número.\n' +
+                          '⏰ Horario de oficina: 8:00 a. m. a 4:00 p. m.\n\n' +
                           'Escribe "menu" para volver al menú principal.'
                 });
+                await notifyAdminsOfGuestRequest(bot, { guestNumber: remitente, reservation: reserva, requestType: 'modification' });
                 await establecerEstado(remitente, 'esperando_agente');
                 break;
                 
@@ -303,12 +305,12 @@ async function manejarPostReservaMenu(bot, remitente, mensaje, establecerEstado,
                 // Solicitar asistencia
                 await sendMessageWithDelay(bot, remitente, {
                     text: '🆘 *SOLICITAR ASISTENCIA*\n\n' +
-                          'Un agente se pondrá en contacto contigo para brindarte asistencia.\n\n' +
+                          'Avisamos a los administradores para que uno de ellos te escriba por privado.\n\n' +
                           '📱 Te contactaremos a este mismo número\n' +
-                          '⏰ Tiempo estimado de respuesta: 30 minutos\n' +
-                          '🕒 Horario: Lunes a Viernes 9:00 AM - 6:00 PM\n\n' +
+                          '🕒 Solicitudes recibidas 24/7 · Oficina de 8:00 a. m. a 4:00 p. m.\n\n' +
                           'Escribe "menu" para volver al menú principal.'
                 });
+                await notifyAdminsOfGuestRequest(bot, { guestNumber: remitente, reservation: reserva, requestType: 'assistance' });
                 await establecerEstado(remitente, 'esperando_agente');
                 break;
                 
@@ -332,12 +334,11 @@ async function manejarNoReserva(bot, remitente, mensaje, establecerEstado) {
     if (mensaje === '1') {
         await sendMessageWithDelay(bot, remitente, {
             text: '👥 *CONTACTAR AGENTE*\n\n' +
-                  'En un momento un agente se comunicará contigo para asistirte.\n\n' +
-                  'Horarios de atención:\n' +
-                  '• Lunes a Viernes: 9:00 AM - 6:00 PM\n' +
-                  '• Sábados: 10:00 AM - 4:00 PM\n\n' +
+                  'Avisamos a los administradores para que uno de ellos te escriba por privado.\n\n' +
+                  'Solicitudes recibidas 24/7 · Oficina de 8:00 a. m. a 4:00 p. m.\n\n' +
                   'Escribe "menu" para volver al menú principal.'
         });
+        await notifyAdminsOfGuestRequest(bot, { guestNumber: remitente, requestType: 'assistance' });
         await establecerEstado(remitente, 'esperando_agente');
     } else if (mensaje === '2') {
         await sendMessageWithDelay(bot, remitente, {

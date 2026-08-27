@@ -76,6 +76,18 @@ Las galerías de Tortuga, Delfín y Tiburón se administran en **Tipos de Menú*
 
 La confirmación ya no depende de grupos ni de Baileys. Usa dos controles administrativos: al aceptar las condiciones se crea una solicitud `pendiente_autorizacion` con código `VJ-000001`; el administrador autoriza el pago y el sistema cambia a `esperando_pago`. Solamente entonces acepta una foto o PDF. Al recibirlo cambia a `pendiente_verificacion`, vuelve a avisar al administrador y requiere la confirmación final.
 
+Reglas operativas vigentes:
+
+- Anticipo: 50 %.
+- Plazo para pagar después de la autorización: 24 horas.
+- Entrada: 2:00 p. m.; salida: 11:00 a. m.
+- Pagos y anticipos no reembolsables.
+- Cambios de fecha o alojamiento: requieren atención privada de un administrador y dependen de disponibilidad.
+- Solicitudes de asistencia recibidas 24/7; horario de oficina de 8:00 a. m. a 4:00 p. m.
+- Conservación prevista de datos operativos: 2 años.
+
+La base de datos impide de forma atómica crear dos reservas activas superpuestas para la misma cabaña. Al solicitar modificación, asistencia o cancelación, los administradores autorizados reciben un aviso individual con enlace al chat privado del huésped.
+
 Antes de autorizar el primer pago, configure **Configuración > Pagos y anticipo** en el panel. El porcentaje predeterminado es 50 %. Registre una cuenta por línea con banco, tipo, número y titular. El sistema bloquea la autorización si no hay cuentas, calcula el anticipo y el saldo, y envía estas instrucciones al huésped sin registrar datos bancarios en el código ni en los logs.
 
 - En el panel: abrir **Reservas**. Primero pulsar **Autorizar pago**; cuando llegue el archivo, abrir el comprobante y pulsar **Confirmar** o **Rechazar**.

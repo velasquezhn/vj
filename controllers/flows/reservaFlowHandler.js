@@ -15,6 +15,7 @@ const logger = require('../../config/logger');
 const { sendReplyButtons } = require('../../services/whatsappInteractiveService');
 const { enviarMenuPrincipal } = require('../../services/messagingService');
 const { reservationStart, NAVIGATION_FOOTER } = require('../../services/whatsappMessages');
+const { getBusinessSettings, reservationTerms } = require('../../services/businessSettingsService');
 
 // Funciones auxiliares para mejorar la legibilidad
 
@@ -261,6 +262,7 @@ Selecciona una opción para continuar.`;
                     const fechaSalidaFormatted = formatearFechaCompleta(datos.fechaSalida);
                     
                     // Resumen completo de la reserva
+                    const businessSettings = await getBusinessSettings();
                     const resumenReserva = `📋 *RESUMEN DE TU RESERVA*
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -274,7 +276,10 @@ Selecciona una opción para continuar.`;
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-📄 *¿Aceptas las condiciones de uso?*`;
+📄 *Condiciones de la reserva*
+${reservationTerms(businessSettings)}
+
+*¿Aceptas estas condiciones?*`;
 
                     await sendReplyButtons(bot, remitente, {
                         header: 'Resumen de reserva',

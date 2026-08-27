@@ -175,7 +175,7 @@ router.put('/:id/password', async (req, res) => {
     
     // Actualizar contraseña
     const result = await runExecute(
-      'UPDATE Admins SET password_hash = ?, must_change_password = ?, updated_at = datetime("now") WHERE admin_id = ?',
+      'UPDATE Admins SET password_hash = ?, must_change_password = ?, token_version = token_version + 1, updated_at = datetime("now") WHERE admin_id = ?',
       [hashedPassword, parseInt(id) === adminId ? 0 : 1, id]
     );
     

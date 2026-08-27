@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS Admins (
   admin_id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, email TEXT UNIQUE,
   full_name TEXT, password_hash TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'admin', is_active INTEGER NOT NULL DEFAULT 1,
   must_change_password INTEGER NOT NULL DEFAULT 0,
+  token_version INTEGER NOT NULL DEFAULT 1,
   last_login TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS CabinTypes (
@@ -115,17 +116,42 @@ CREATE TABLE IF NOT EXISTS AdminAuditLogs (
 INSERT OR IGNORE INTO AppSettings(setting_key, setting_value) VALUES ('payment_deposit_percentage', '50');
 INSERT OR IGNORE INTO AppSettings(setting_key, setting_value) VALUES ('payment_bank_accounts', '[]');
 INSERT OR IGNORE INTO AppSettings(setting_key, setting_value) VALUES ('payment_notes', '');
+INSERT OR IGNORE INTO AppSettings(setting_key, setting_value) VALUES ('check_in_time', '14:00');
+INSERT OR IGNORE INTO AppSettings(setting_key, setting_value) VALUES ('check_out_time', '11:00');
+INSERT OR IGNORE INTO AppSettings(setting_key, setting_value) VALUES ('office_hours', '08:00-16:00');
+INSERT OR IGNORE INTO AppSettings(setting_key, setting_value) VALUES ('support_availability', '24/7');
+INSERT OR IGNORE INTO AppSettings(setting_key, setting_value) VALUES ('refund_policy', 'no_refunds');
+INSERT OR IGNORE INTO AppSettings(setting_key, setting_value) VALUES ('data_retention_days', '730');
+INSERT OR IGNORE INTO AppSettings(setting_key, setting_value) VALUES ('review_enabled', 'true');
 CREATE INDEX IF NOT EXISTS idx_reservations_dates ON Reservations(cabin_id, start_date, end_date, status);
 CREATE INDEX IF NOT EXISTS idx_reservations_user ON Reservations(user_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_user_states_expires ON UserStates(expires_at);
 CREATE INDEX IF NOT EXISTS idx_activities_menu ON Activities(activo, incluir_en_menu, orden_menu);
 CREATE INDEX IF NOT EXISTS idx_admin_audit_created ON AdminAuditLogs(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_admin_audit_admin ON AdminAuditLogs(admin_id, created_at DESC);
+CREATE TRIGGER IF NOT EXISTS trg_reservation_no_overlap_insert
+BEFORE INSERT ON Reservations
+WHEN NEW.status IN ('pendiente_autorizacion', 'esperando_pago', 'pendiente_verificacion', 'confirmada', 'confirmado')
+AND EXISTS (
+  SELECT 1 FROM Reservations r WHERE r.cabin_id = NEW.cabin_id
+  AND r.status IN ('pendiente_autorizacion', 'esperando_pago', 'pendiente_verificacion', 'confirmada', 'confirmado')
+  AND date(r.start_date) < date(NEW.end_date) AND date(r.end_date) > date(NEW.start_date)
+)
+BEGIN SELECT RAISE(ABORT, 'CABIN_DATE_CONFLICT'); END;
+CREATE TRIGGER IF NOT EXISTS trg_reservation_no_overlap_update
+BEFORE UPDATE OF cabin_id, start_date, end_date, status ON Reservations
+WHEN NEW.status IN ('pendiente_autorizacion', 'esperando_pago', 'pendiente_verificacion', 'confirmada', 'confirmado')
+AND EXISTS (
+  SELECT 1 FROM Reservations r WHERE r.cabin_id = NEW.cabin_id AND r.reservation_id != NEW.reservation_id
+  AND r.status IN ('pendiente_autorizacion', 'esperando_pago', 'pendiente_verificacion', 'confirmada', 'confirmado')
+  AND date(r.start_date) < date(NEW.end_date) AND date(r.end_date) > date(NEW.start_date)
+)
+BEGIN SELECT RAISE(ABORT, 'CABIN_DATE_CONFLICT'); END;
 INSERT OR IGNORE INTO SchemaMigrations(version) VALUES (1);
 `;
 
 const compatibilityColumns = {
-  Admins: ['last_login TEXT', 'must_change_password INTEGER NOT NULL DEFAULT 0'],
+  Admins: ['last_login TEXT', 'must_change_password INTEGER NOT NULL DEFAULT 0', 'token_version INTEGER NOT NULL DEFAULT 1'],
   Cabins: ['cabin_type_id INTEGER', 'base_price REAL DEFAULT 0', 'price_per_night REAL DEFAULT 0', 'price_per_additional_person REAL DEFAULT 0', 'is_active INTEGER DEFAULT 1'],
   Reservations: [
     'personas INTEGER DEFAULT 1', 'comprobante_nombre_archivo TEXT', 'grupoMessageId TEXT',

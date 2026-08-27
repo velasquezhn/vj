@@ -102,6 +102,36 @@ async function notifyWhatsAppAdmins(bot, reservationId) {
   return { sent, failed };
 }
 
+async function notifyAdminsOfGuestRequest(bot, { guestNumber, reservation, requestType, note = '' }) {
+  const admins = [...await getAdminNumbers()];
+  const phone = normalizeRecipient(guestNumber);
+  if (!admins.length) return { sent: 0, failed: 0 };
+  const labels = {
+    modification: 'SOLICITUD DE MODIFICACIÓN',
+    assistance: 'SOLICITUD DE ASISTENCIA',
+    cancellation: 'CANCELACIÓN DEL HUÉSPED'
+  };
+  const text = `🔔 *${labels[requestType] || 'SOLICITUD DEL HUÉSPED'}*\n\n` +
+    `Teléfono: *${phone}*\n` +
+    (reservation ? `Reserva: *${reservation.confirmation_code || `VJ-${String(reservation.reservation_id).padStart(6, '0')}`}*\n` +
+      `Alojamiento: *${reservation.cabin_name || 'Por confirmar'}*\n` +
+      `Fechas: *${reservation.check_in_date || reservation.start_date || '-'} al ${reservation.check_out_date || reservation.end_date || '-'}*\n` : '') +
+    (note ? `Detalle: ${String(note).slice(0, 300)}\n` : '') +
+    `\nEscríbele directamente: https://wa.me/${phone}`;
+  let sent = 0;
+  let failed = 0;
+  for (const admin of admins) {
+    try { await bot.sendMessage(admin, { text }); sent += 1; }
+    catch (error) {
+      failed += 1;
+      logger.error('No se pudo avisar una solicitud privada al administrador', {
+        admin, requestType, code: error.response?.data?.error?.code
+      });
+    }
+  }
+  return { sent, failed };
+}
+
 async function sendPendingReviewsToAdmin(bot, phoneNumber, limit = 5) {
   const rows = await runQuery(`SELECT reservation_id FROM Reservations
     WHERE status IN ('pendiente_autorizacion', 'pendiente_verificacion')
@@ -231,5 +261,5 @@ async function handleAdminMessage(bot, sender, text) {
 
 module.exports = {
   getAdminNumbers, isAdminSender, parseReservationId, notifyWhatsAppAdmins,
-  sendPendingReviewsToAdmin, handleAdminMessage, reviewText
+  notifyAdminsOfGuestRequest, sendPendingReviewsToAdmin, handleAdminMessage, reviewText
 };

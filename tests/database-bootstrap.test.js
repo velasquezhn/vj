@@ -11,6 +11,13 @@ function query(dbPath, sql) {
   });
 }
 
+function execute(dbPath, sql) {
+  return new Promise((resolve, reject) => {
+    const db = new sqlite3.Database(dbPath);
+    db.exec(sql, (error) => db.close(() => error ? reject(error) : resolve()));
+  });
+}
+
 describe('database bootstrap', () => {
   let directory;
   let dbPath;
@@ -61,6 +68,18 @@ describe('database bootstrap', () => {
     expect(backups).toHaveLength(1);
     const integrity = await query(path.join(backupDir, backups[0]), 'PRAGMA integrity_check');
     expect(integrity[0].integrity_check).toBe('ok');
+  });
+
+  test('prevents two active reservations from occupying the same cabin and dates', async () => {
+    const env = { ...process.env, DB_PATH: dbPath, NODE_ENV: 'test' };
+    execFileSync(process.execPath, ['scripts/migrate-database.js'], { cwd: path.join(__dirname, '..'), env });
+    execFileSync(process.execPath, ['scripts/seed-database.js'], { cwd: path.join(__dirname, '..'), env });
+    await execute(dbPath, `INSERT INTO Users(phone_number,name) VALUES('50499990001','Uno'),('50499990002','Dos');
+      INSERT INTO Reservations(user_id,cabin_id,start_date,end_date,status,total_price,personas)
+      VALUES(1,1,'2026-12-10','2026-12-12','pendiente_autorizacion',3000,2);`);
+    await expect(execute(dbPath, `INSERT INTO Reservations(user_id,cabin_id,start_date,end_date,status,total_price,personas)
+      VALUES(2,1,'2026-12-11','2026-12-13','pendiente_autorizacion',3000,2);`))
+      .rejects.toThrow('CABIN_DATE_CONFLICT');
   });
 
   test('reenvía solicitudes pendientes a un administrador nuevo', async () => {

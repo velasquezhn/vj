@@ -36,6 +36,8 @@ async function notifyGuest(reservation, decision) {
         `Anticipo requerido (${payment.deposit_percentage}%): *HNL ${amounts.deposit.toLocaleString('es-HN', { minimumFractionDigits: 2 })}*\n` +
         `Saldo pendiente: *HNL ${amounts.balance.toLocaleString('es-HN', { minimumFractionDigits: 2 })}*\n\n` +
         `*Cuentas para transferencia:*\n${accounts}\n` +
+        `Plazo para enviar el comprobante: *24 horas* (vence ${reservation.payment_due_at || '24 horas después de esta autorización'}).\n` +
+        `Política: *los pagos y anticipos no son reembolsables*.\n` +
         (payment.notes ? `\n${payment.notes}\n` : '\n') +
         '\nDespués de pagar, envía por este chat una foto o PDF del comprobante.',
       footer: 'La reserva se confirma después de revisar el comprobante',

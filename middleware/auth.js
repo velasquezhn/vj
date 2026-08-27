@@ -34,7 +34,7 @@ class JWTSecurity {
       role: normalizeAdminRole(adminData.role),
       iat: Math.floor(Date.now() / 1000),
       jti: this.generateJTI(),
-      tokenVersion: 1 // Para invalidar todos los tokens de un usuario
+      tokenVersion: Number(adminData.token_version || 1)
     };
     
     // Access token (corta duración)
@@ -178,7 +178,7 @@ function authenticateToken(req, res, next) {
     algorithms: ['HS256'],
     issuer: 'villas-julie-admin',
     audience: 'villas-julie-dashboard'
-  }, (err, user) => {
+  }, async (err, user) => {
     if (err) {
       logger.warn('Token JWT inválido', {
         ip: clientIP,
@@ -194,6 +194,18 @@ function authenticateToken(req, res, next) {
       });
     }
     
+    try {
+      const { runQuery } = require('../db');
+      const rows = await runQuery('SELECT role, token_version FROM Admins WHERE admin_id = ? AND is_active = 1', [user.adminId]);
+      if (!rows.length || Number(rows[0].token_version || 1) !== Number(user.tokenVersion || 1)) {
+        return res.status(401).json({ success: false, message: 'La sesión ya no es válida', error: 'SESSION_REVOKED' });
+      }
+      user.role = normalizeAdminRole(rows[0].role);
+    } catch (databaseError) {
+      logger.error('No se pudo validar la sesión en la base de datos', { adminId: user.adminId, error: databaseError.message });
+      return res.status(503).json({ success: false, message: 'No se pudo validar la sesión', error: 'SESSION_VALIDATION_UNAVAILABLE' });
+    }
+
     // Log acceso exitoso
     logger.info('Acceso autenticado exitoso', {
       userId: user.adminId,
@@ -263,6 +275,7 @@ function generateToken(adminData) {
     adminId: adminData.admin_id,
     username: adminData.username,
     role: normalizeAdminRole(adminData.role),
+    tokenVersion: Number(adminData.token_version || 1),
     iat: Math.floor(Date.now() / 1000),
     jti: generateJTI() // JWT ID único para tracking
   };

@@ -116,9 +116,7 @@ async function createReservationWithUser(phoneNumber, reservaData, cabinId) {
             reservaData.personas || null
         ]);
 
-        logger.info('[DEBUG] Insert reservation result:', insertResult);
         const reservationId = insertResult.lastID;
-        logger.info('[DEBUG] New reservation ID:', reservationId);
 
         if (!reservationId) {
             return { success: false, error: 'No se pudo obtener ID de reserva' };
@@ -133,6 +131,9 @@ async function createReservationWithUser(phoneNumber, reservaData, cabinId) {
         return { success: true, reservationId, confirmationCode };
     } catch (error) {
         logger.error('Error in createReservationWithUser:', error);
+        if (String(error.message || '').includes('CABIN_DATE_CONFLICT')) {
+            return { success: false, error: 'La cabaña dejó de estar disponible para esas fechas. Selecciona otra opción.' };
+        }
         return { success: false, error: error.message || 'Error desconocido' };
     }
 }
@@ -169,12 +170,10 @@ async function upsertUser(phoneNumber, name) {
         // Try to update first
         const updateSql = `UPDATE Users SET name = ? WHERE phone_number = ?`;
         const updateResult = await runExecute(updateSql, [name, normalizedPhone]);
-        console.log(`[DEBUG] upsertUser updateResult:`, updateResult);
         if (updateResult.changes === 0) {
             // No rows updated, insert new user
             const insertSql = `INSERT INTO Users (phone_number, name) VALUES (?, ?)`;
-            const insertResult = await runExecute(insertSql, [normalizedPhone, name]);
-            console.log(`[DEBUG] upsertUser insertResult:`, insertResult);
+            await runExecute(insertSql, [normalizedPhone, name]);
         }
         return { success: true };
     } catch (error) {
