@@ -47,13 +47,13 @@ async function buscarCabanaDisponible(tipo, fechaInicio, fechaFin, personas) {
     // Consulta robusta para solapamiento de fechas
     for (const cabin of cabins) {
         const reservas = await runQuery(
-            `SELECT * FROM Reservations WHERE cabin_id = ? AND NOT (
-                end_date < ? OR start_date > ?
-            )`,
+            `SELECT * FROM Reservations WHERE cabin_id = ?
+             AND status IN ('pendiente_autorizacion', 'esperando_pago', 'pendiente_verificacion', 'confirmada', 'confirmado')
+             AND date(start_date) < date(?) AND date(end_date) > date(?)`,
             [
                 cabin.cabin_id,
-                fechaInicioISO,
-                fechaFinISO
+                fechaFinISO,
+                fechaInicioISO
             ]
         );
         console.log(`[DEBUG][buscarCabanaDisponible] Cabaña ${cabin.cabin_id} (${cabin.name}): Reservas en rango: ${reservas.length}`);

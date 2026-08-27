@@ -46,6 +46,7 @@ Copie `.env.example`; nunca versione `.env` ni credenciales.
 - `WHATSAPP_ADMIN_NUMBERS`: respaldo opcional para números autorizados, separados por coma y con código de país. La lista normal se administra desde **Configuración > Administradores de WhatsApp** en el panel.
 - `PUBLIC_BASE_URL`: URL HTTPS pública del backend, usada para abrir comprobantes desde los avisos administrativos.
 - `WHATSAPP_CABIN_GALLERY_LIMIT`: máximo de fotografías enviadas al mostrar una cabaña (1 a 5; recomendado y predeterminado: 4).
+- `PAYMENT_WINDOW_HOURS`: plazo informado y reservado para que el huésped envíe el comprobante después de la autorización (24 por defecto).
 - `OPENWEATHER_API_KEY`: opcional; habilita el pronóstico del menú sin guardar la clave en el código.
 
 ## Configuración de Meta
@@ -70,14 +71,14 @@ Las galerías de Tortuga, Delfín y Tiburón se administran en **Tipos de Menú*
 
 ### Aprobación de reservas
 
-La confirmación ya no depende de grupos ni de Baileys. Al aceptar las condiciones se crea una solicitud `pendiente` con código `VJ-000001`; el comprobante recibido queda asociado a esa solicitud. Después puede revisarse de dos maneras equivalentes:
+La confirmación ya no depende de grupos ni de Baileys. Usa dos controles administrativos: al aceptar las condiciones se crea una solicitud `pendiente_autorizacion` con código `VJ-000001`; el administrador autoriza el pago y el sistema cambia a `esperando_pago`. Solamente entonces acepta una foto o PDF. Al recibirlo cambia a `pendiente_verificacion`, vuelve a avisar al administrador y requiere la confirmación final.
 
-- En el panel: abrir **Reservas**, revisar el comprobante y pulsar aprobar o rechazar.
-- En WhatsApp: cada número activo registrado en **Configuración > Administradores de WhatsApp** recibe botones privados. También admite `/aprobar VJ-000001`, `/rechazar VJ-000001 motivo` y `/reserva VJ-000001`.
+- En el panel: abrir **Reservas**. Primero pulsar **Autorizar pago**; cuando llegue el archivo, abrir el comprobante y pulsar **Confirmar** o **Rechazar**.
+- En WhatsApp: cada número activo registrado en **Configuración > Administradores de WhatsApp** recibe primero **Autorizar pago / Rechazar** y, después del comprobante, **Confirmar / Rechazar**. Como respaldo admite `/aprobar VJ-000001`, `/rechazar VJ-000001 motivo` y `/reserva VJ-000001`; `/aprobar` ejecuta solamente la etapa que corresponda al estado actual.
 
 Los números se escriben con código de país y solo dígitos (por ejemplo, `504XXXXXXXX`). Pueden editarse, desactivarse o eliminarse sin modificar Railway. Cada administrador debe enviar `/admin` al número de Villas Julie antes de una demostración; `/cliente` permite volver a probar el flujo como huésped.
 
-Al agregar un administrador, el sistema intenta enviarle una confirmación y reenvía hasta cinco solicitudes pendientes con comprobante. El botón **Enviar prueba** permite repetirlo. Si Meta lo bloquea, el panel conserva el número y muestra la instrucción de enviar `/admin` desde ese teléfono para abrir la ventana de 24 horas.
+Al agregar un administrador, el sistema intenta enviarle una confirmación y reenvía hasta cinco solicitudes pendientes de autorización o de verificación. El botón **Enviar prueba** permite repetirlo. Si Meta lo bloquea, el panel conserva el número y muestra la instrucción de enviar `/admin` desde ese teléfono para abrir la ventana de 24 horas.
 
 La aprobación vuelve a comprobar disponibilidad, registra administrador y fecha de revisión, actualiza el estado y notifica al huésped. Si WhatsApp no permite el aviso por estar fuera de la ventana de 24 horas, la reserva conserva la decisión y muestra `notification_status=failed` para seguimiento.
 

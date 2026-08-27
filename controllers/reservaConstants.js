@@ -9,6 +9,7 @@ const ESTADOS_RESERVA = {
   PERSONAS: 'reservar_personas',
   ALOJAMIENTO: 'reservar_alojamiento',
   CONDICIONES: 'reservar_condiciones',
+  ESPERANDO_AUTORIZACION: 'esperando_autorizacion',
   ESPERANDO_PAGO: 'esperando_pago',
   ESPERANDO_CONFIRMACION: 'esperando_confirmacion'
 };

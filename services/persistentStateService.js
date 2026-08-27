@@ -63,6 +63,8 @@ async function establecerEstado(numero, estado, datos = {}) {
     const longLivedStates = [
       'esperando_pago', 
       'ESPERANDO_PAGO', 
+      'esperando_autorizacion',
+      'esperando_confirmacion',
       'post_reserva_comprobante_enviado',
       'RESERVA_PENDIENTE'
     ];

@@ -26,7 +26,9 @@ async function guardarComprobante(reservaId, buffer, mimetype, nombreArchivo) {
     const resultado = await Reserva.updateComprobante(reservaId, null, null, relativePath);
     if (!resultado) {
       await fs.promises.unlink(filePath).catch(() => undefined);
-      throw new Error('Reserva no encontrada para asociar el comprobante');
+      const error = new Error('El comprobante no está habilitado para esta reserva');
+      error.code = 'RECEIPT_NOT_ALLOWED';
+      throw error;
     }
     const { runExecute } = require('../db');
     await runExecute(
@@ -37,7 +39,7 @@ async function guardarComprobante(reservaId, buffer, mimetype, nombreArchivo) {
     );
     return resultado;
   } catch (error) {
-    console.error('Error guardando comprobante:', error);
+    if (error.code !== 'RECEIPT_NOT_ALLOWED') console.error('Error guardando comprobante:', error);
     throw error;
   }
 }

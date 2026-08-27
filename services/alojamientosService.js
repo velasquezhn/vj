@@ -289,7 +289,7 @@ const getLatestPendingReservation = async () => {
   try {
     const sql = `
       SELECT * FROM Reservations
-      WHERE status = 'pendiente'
+      WHERE status IN ('pendiente_autorizacion', 'esperando_pago', 'pendiente_verificacion')
       ORDER BY created_at DESC
       LIMIT 1
     `;

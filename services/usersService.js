@@ -83,8 +83,10 @@ const updateUserStatesBasedOnReservations = async () => {
         // Verificar si tiene reservas activas o futuras
         const hasActiveReservations = userReservations.some(res => {
           const endDate = new Date(res.end_date);
-          // Estados válidos: confirmado, confirmada, pendiente, pending
-          const validStates = ['confirmado', 'confirmada', 'pendiente', 'pending', 'confirmed'];
+          const validStates = [
+            'pendiente_autorizacion', 'esperando_pago', 'pendiente_verificacion',
+            'confirmado', 'confirmada', 'confirmed'
+          ];
           const isActiveStatus = validStates.includes(res.status.toLowerCase());
           const isFutureOrCurrent = endDate >= currentDate;
           

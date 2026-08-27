@@ -49,10 +49,11 @@ CREATE TABLE IF NOT EXISTS CabinPhotos (
 );
 CREATE TABLE IF NOT EXISTS Reservations (
   reservation_id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, cabin_id INTEGER NOT NULL,
-  start_date TEXT NOT NULL, end_date TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pendiente', total_price REAL NOT NULL DEFAULT 0,
+  start_date TEXT NOT NULL, end_date TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pendiente_autorizacion', total_price REAL NOT NULL DEFAULT 0,
   personas INTEGER NOT NULL DEFAULT 1, comprobante_nombre_archivo TEXT, grupoMessageId TEXT,
   confirmation_code TEXT UNIQUE, receipt_received_at TEXT, reviewed_at TEXT, reviewed_by INTEGER,
-  rejection_reason TEXT, notification_status TEXT,
+  rejection_reason TEXT, notification_status TEXT, payment_authorized_at TEXT,
+  payment_authorized_by INTEGER, payment_due_at TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CHECK (date(end_date) > date(start_date)), CHECK (personas > 0),
   FOREIGN KEY (user_id) REFERENCES Users(user_id), FOREIGN KEY (cabin_id) REFERENCES Cabins(cabin_id)
@@ -104,7 +105,8 @@ const compatibilityColumns = {
   Reservations: [
     'personas INTEGER DEFAULT 1', 'comprobante_nombre_archivo TEXT', 'grupoMessageId TEXT',
     'confirmation_code TEXT', 'receipt_received_at TEXT', 'reviewed_at TEXT', 'reviewed_by INTEGER',
-    'rejection_reason TEXT', 'notification_status TEXT'
+    'rejection_reason TEXT', 'notification_status TEXT', 'payment_authorized_at TEXT',
+    'payment_authorized_by INTEGER', 'payment_due_at TEXT'
   ],
   ConversationStates: ['user_number TEXT', 'created_at TEXT', 'updated_at TEXT'],
   Activities: ['activity_key TEXT', 'nombre TEXT', 'categoria TEXT', 'subcategoria TEXT', 'descripcion TEXT', 'descripcion_corta TEXT', 'ubicacion TEXT', 'contacto TEXT', 'horarios TEXT', 'precios TEXT', 'servicios TEXT', 'dificultad TEXT', 'duracion TEXT', 'capacidad_maxima INTEGER', 'edad_minima INTEGER', 'idiomas TEXT', 'recomendaciones TEXT', 'disponibilidad TEXT', 'multimedia TEXT', 'calificacion TEXT', 'certificaciones TEXT', 'orden INTEGER DEFAULT 999', 'activo INTEGER DEFAULT 1', 'incluir_en_menu INTEGER DEFAULT 1', 'orden_menu INTEGER DEFAULT 999']
@@ -120,6 +122,11 @@ async function migrate() {
     }
   }
   await exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_reservations_confirmation_code ON Reservations(confirmation_code)');
+  // Compatibilidad con solicitudes creadas por el flujo anterior de una sola aprobación.
+  await exec(`UPDATE Reservations SET status = 'pendiente_verificacion'
+    WHERE status = 'pendiente' AND comprobante_nombre_archivo IS NOT NULL`);
+  await exec(`UPDATE Reservations SET status = 'pendiente_autorizacion'
+    WHERE status = 'pendiente' AND comprobante_nombre_archivo IS NULL`);
   console.log(`Database migrated: ${dbPath}`);
 }
 

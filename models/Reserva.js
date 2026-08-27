@@ -22,10 +22,11 @@ async function findByPhoneAndStatus(phone, status) {
 
 async function updateComprobante(id, buffer, contentType, nombreArchivo) {
   // Now nombreArchivo is the relative file path string, buffer and contentType are null
-  const sql = `UPDATE ${TABLE_NAME} SET status = ?, comprobante_nombre_archivo = ? WHERE reservation_id = ?`;
-  const params = ['pendiente', nombreArchivo, id];
-  await runExecute(sql, params);
-  return findById(id);
+  const sql = `UPDATE ${TABLE_NAME} SET status = ?, comprobante_nombre_archivo = ?, updated_at = CURRENT_TIMESTAMP
+    WHERE reservation_id = ? AND status = 'esperando_pago'`;
+  const params = ['pendiente_verificacion', nombreArchivo, id];
+  const result = await runExecute(sql, params);
+  return result.changes === 1 ? findById(id) : null;
 }
 
 async function updateEstado(id, nuevoEstado) {

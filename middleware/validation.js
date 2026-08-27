@@ -123,7 +123,7 @@ const validateReservationCreation = [
       return true;
     }),
   body('status')
-    .isIn(['pendiente', 'confirmada', 'cancelada', 'completada'])
+    .isIn(['pendiente_autorizacion', 'esperando_pago', 'pendiente_verificacion', 'confirmada', 'cancelada', 'rechazada', 'completada', 'expirada'])
     .withMessage('Estado de reserva inválido'),
   body('total_price')
     .optional()
@@ -152,7 +152,7 @@ const validateReservationUpdate = [
     .withMessage('Fecha de fin inválida'),
   body('status')
     .optional()
-    .isIn(['pendiente', 'confirmada', 'cancelada', 'completada'])
+    .isIn(['pendiente_autorizacion', 'esperando_pago', 'pendiente_verificacion', 'confirmada', 'cancelada', 'rechazada', 'completada', 'expirada'])
     .withMessage('Estado de reserva inválido'),
   body('total_price')
     .optional()

@@ -367,7 +367,7 @@ Selecciona una opción para continuar.`;
                 const created = await createReservationWithUser(datos.telefono, {
                     start_date: fechaInicio,
                     end_date: fechaFin,
-                    status: 'pendiente',
+                    status: 'pendiente_autorizacion',
                     total_price: datos.precioTotal,
                     personas: datos.personas,
                     alojamiento: datos.alojamiento
@@ -378,20 +378,40 @@ Selecciona una opción para continuar.`;
                 await bot.sendMessage(remitente, {
                     text: `✅ *SOLICITUD REGISTRADA*\n\n` +
                           `Código: *${created.confirmationCode}*\n` +
-                          `Estado: *Pendiente de comprobante*\n` +
+                          `Estado: *Pendiente de autorización administrativa*\n` +
                           `Alojamiento: *${cabanaDisponible.name}*\n` +
                           `Fechas: *${fechaInicio} al ${fechaFin}*\n` +
                           `Total: *HNL ${Number(datos.precioTotal).toLocaleString('es-HN')}*\n\n` +
-                          '📎 Envía ahora una foto o PDF de tu comprobante. El administrador lo revisará desde el panel y recibirás aquí la confirmación final.'
+                          '⏳ Un administrador revisará primero la disponibilidad y el total. Todavía no realices el pago ni envíes comprobantes. Te avisaremos por este chat cuando el pago esté autorizado.'
                 });
 
-                await establecerEstado(remitente, ESTADOS_RESERVA.ESPERANDO_PAGO, {
+                const reservationState = {
                     ...datos,
                     reservaId: created.reservationId,
                     reservation_id: created.reservationId,
                     confirmationCode: created.confirmationCode,
                     cabinId: cabanaDisponible.cabin_id,
                     cabinName: cabanaDisponible.name
+                };
+                await establecerEstado(remitente, ESTADOS_RESERVA.ESPERANDO_AUTORIZACION, reservationState);
+                const { notifyWhatsAppAdmins } = require('../../services/whatsappAdminService');
+                try {
+                    const adminDelivery = await notifyWhatsAppAdmins(bot, created.reservationId);
+                    logger.info('Solicitud previa al pago enviada a administradores', {
+                        reservationId: created.reservationId, sent: adminDelivery.sent, failed: adminDelivery.failed
+                    });
+                } catch (notifyError) {
+                    logger.error('La solicitud quedó guardada, pero falló el aviso administrativo', {
+                        reservationId: created.reservationId, error: notifyError.message
+                    });
+                }
+                break;
+            }
+
+            case ESTADOS_RESERVA.ESPERANDO_AUTORIZACION: {
+                await bot.sendMessage(remitente, {
+                    text: `⏳ Tu solicitud *${datos.confirmationCode || ''}* todavía espera autorización administrativa.\n\n` +
+                          'No envíes el comprobante todavía. Cuando sea autorizada recibirás un mensaje que habilita el pago.'
                 });
                 break;
             }
@@ -429,7 +449,7 @@ Selecciona una opción para continuar.`;
                     );
                     console.log('Reserva actualizada con comprobante:', reservaActualizada);
                     await bot.sendMessage(remitente, {
-                        text: `✅ *COMPROBANTE RECIBIDO*\n\nSolicitud: *${datos.confirmationCode || `VJ-${String(datos.reservaId).padStart(6, '0')}`}*\n\nEl administrador ya puede revisarlo en el panel. Te notificaremos por este chat cuando sea aprobado o rechazado.`
+                        text: `✅ *COMPROBANTE RECIBIDO*\n\nSolicitud: *${datos.confirmationCode || `VJ-${String(datos.reservaId).padStart(6, '0')}`}*\n\nEl administrador debe verificar ahora el pago. Te notificaremos por este chat cuando la reserva tenga la confirmación final.`
                     });
                     const { notifyWhatsAppAdmins } = require('../../services/whatsappAdminService');
                     const adminDelivery = await notifyWhatsAppAdmins(bot, datos.reservaId);

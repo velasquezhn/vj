@@ -1,7 +1,7 @@
 const logger = require('../config/logger');
 const { normalizeRecipient } = require('./whatsappCloudService');
 const { sendReplyButtons } = require('./whatsappInteractiveService');
-const { approveReservation, rejectReservation, getReservationForReview } = require('./reservationApprovalService');
+const { authorizePayment, approveReservation, rejectReservation, getReservationForReview } = require('./reservationApprovalService');
 const { obtenerEstado, establecerEstado } = require('./stateService');
 const { activeAdminNumbers } = require('./whatsappAdminSettingsService');
 const { runQuery } = require('../db');
@@ -39,7 +39,10 @@ function receiptUrl(reservation) {
 
 function reviewText(reservation) {
   const receipt = receiptUrl(reservation);
-  return `🧾 *SOLICITUD PARA REVISAR*\n\n` +
+  const stage = reservation.status === 'pendiente_autorizacion'
+    ? 'AUTORIZACIÓN PREVIA AL PAGO'
+    : 'VERIFICACIÓN DEL COMPROBANTE';
+  return `🧾 *${stage}*\n\n` +
     `Código: *${reservation.confirmation_code}*\n` +
     `Huésped: *${reservation.user_name || 'Sin nombre'}*\n` +
     `Teléfono: *${reservation.phone_number}*\n` +
@@ -47,16 +50,17 @@ function reviewText(reservation) {
     `Fechas: *${reservation.start_date} al ${reservation.end_date}*\n` +
     `Personas: *${reservation.personas}*\n` +
     `Total: *HNL ${Number(reservation.total_price).toLocaleString('es-HN')}*\n` +
-    (receipt ? `Comprobante: ${receipt}` : 'Comprobante: pendiente');
+    (receipt ? `Comprobante: ${receipt}` : 'Comprobante: aún no permitido');
 }
 
 async function sendReview(bot, to, reservation) {
+  const preapproval = reservation.status === 'pendiente_autorizacion';
   return sendReplyButtons(bot, to, {
     header: 'Revisión administrativa',
     body: reviewText(reservation),
     footer: 'Solo administradores autorizados',
     buttons: [
-      { id: `admin_approve_${reservation.reservation_id}`, title: 'Aprobar' },
+      { id: `${preapproval ? 'admin_authorize' : 'admin_approve'}_${reservation.reservation_id}`, title: preapproval ? 'Autorizar pago' : 'Confirmar' },
       { id: `admin_reject_${reservation.reservation_id}`, title: 'Rechazar' },
       { id: `admin_details_${reservation.reservation_id}`, title: 'Ver detalles' }
     ],
@@ -92,8 +96,9 @@ async function notifyWhatsAppAdmins(bot, reservationId) {
 
 async function sendPendingReviewsToAdmin(bot, phoneNumber, limit = 5) {
   const rows = await runQuery(`SELECT reservation_id FROM Reservations
-    WHERE status = 'pendiente' AND comprobante_nombre_archivo IS NOT NULL
-    ORDER BY receipt_received_at DESC, reservation_id DESC LIMIT ?`, [Math.min(Math.max(Number(limit) || 5, 1), 10)]);
+    WHERE status IN ('pendiente_autorizacion', 'pendiente_verificacion')
+    ORDER BY CASE WHEN receipt_received_at IS NULL THEN 1 ELSE 0 END, receipt_received_at DESC, reservation_id DESC LIMIT ?`,
+    [Math.min(Math.max(Number(limit) || 5, 1), 10)]);
   let sent = 0;
   let failed = 0;
   for (const row of rows) {
@@ -149,13 +154,28 @@ async function handleAdminMessage(bot, sender, text) {
     return true;
   }
 
+  const authorizeMatch = input.match(/^admin_authorize_(\d+)$/);
+  if (authorizeMatch) {
+    const result = await authorizePayment(Number(authorizeMatch[1]), normalizeRecipient(sender));
+    await bot.sendMessage(sender, { text: result.ok
+      ? `✅ Pago autorizado para ${result.reservation.confirmation_code}. El huésped ya puede enviar el comprobante.`
+      : `No se pudo autorizar: ${result.code}.` });
+    return true;
+  }
+
   const approveMatch = input.match(/^admin_approve_(\d+)$/) || input.match(/^\/(?:aprobar|confirmar)\s+(.+)$/i);
   if (approveMatch) {
     const id = parseReservationId(approveMatch[1]);
-    const result = id ? await approveReservation(id, normalizeRecipient(sender)) : { ok: false, code: 'INVALID_ID' };
+    const current = id ? await getReservationForReview(id) : null;
+    const result = !current ? { ok: false, code: 'INVALID_ID' }
+      : current.status === 'pendiente_autorizacion'
+        ? await authorizePayment(id, normalizeRecipient(sender))
+        : await approveReservation(id, normalizeRecipient(sender));
     await bot.sendMessage(sender, {
       text: result.ok
-        ? `✅ Reserva ${result.reservation.confirmation_code} confirmada.${result.reservation.notification_status === 'sent' ? ' Huésped notificado.' : ' Aviso al huésped pendiente.'}`
+        ? result.reservation.status === 'esperando_pago'
+          ? `✅ Pago autorizado para ${result.reservation.confirmation_code}. Huésped habilitado para enviar comprobante.`
+          : `✅ Reserva ${result.reservation.confirmation_code} confirmada.${result.reservation.notification_status === 'sent' ? ' Huésped notificado.' : ' Aviso al huésped pendiente.'}`
         : `No se pudo confirmar: ${result.code}.`
     });
     return true;

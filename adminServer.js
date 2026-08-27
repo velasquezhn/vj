@@ -47,6 +47,7 @@ const usersService = require('./services/usersService');
 const alojamientosService = require('./services/alojamientosService');
 const actividadesService = require('./services/actividadesService');
 const backupService = require('./services/backupService');
+const reservaCleanupService = require('./services/reservaCleanupService');
 
 const app = express();
 app.disable('x-powered-by');
@@ -997,6 +998,7 @@ function startServer() {
   // Iniciar servicio de backup automático
   console.log('🔄 Iniciando servicio de backup automático...');
   backupService.start();
+  reservaCleanupService.iniciar();
   
   });
   return server;

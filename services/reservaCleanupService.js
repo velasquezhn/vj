@@ -65,31 +65,27 @@ class ReservaCleanupService {
     try {
       logger.info('🔍 Ejecutando limpieza de reservas pendientes...');
 
-      // Primero, obtener las reservas que serán eliminadas para log
-      const reservasAEliminar = await this.obtenerReservasExpiradas();
+      const reservasAExpirar = await this.obtenerReservasExpiradas();
       
-      if (reservasAEliminar.length === 0) {
-        logger.info('✅ No hay reservas pendientes expiradas para eliminar');
+      if (reservasAExpirar.length === 0) {
+        logger.info('✅ No hay reservas pendientes por expirar');
         return;
       }
 
-      // Log de las reservas que serán eliminadas
-      logger.info(`⚠️ Se eliminarán ${reservasAEliminar.length} reservas expiradas:`);
-      reservasAEliminar.forEach(reserva => {
+      logger.info(`⚠️ Se marcarán como expiradas ${reservasAExpirar.length} reservas:`);
+      reservasAExpirar.forEach(reserva => {
         const horasExpiradas = this.calcularHorasExpiradas(reserva.created_at);
         logger.info(`   - ID: ${reserva.reservation_id} | Usuario: ${reserva.guest_name || 'Sin nombre'} | Expirada hace: ${horasExpiradas.toFixed(1)}h`);
       });
 
-      // Ejecutar eliminación
       const resultado = await this.eliminarReservasExpiradas();
       
       if (resultado.changes > 0) {
-        logger.info(`✅ Eliminadas ${resultado.changes} reservas pendientes expiradas`);
+        logger.info(`✅ Marcadas como expiradas ${resultado.changes} reservas pendientes`);
         
-        // Opcional: notificar a administradores
-        await this.notificarLimpieza(resultado.changes, reservasAEliminar);
+        await this.notificarLimpieza(resultado.changes, reservasAExpirar);
       } else {
-        logger.info('ℹ️ No se eliminaron reservas (posiblemente ya fueron procesadas)');
+        logger.info('ℹ️ No se expiraron reservas (posiblemente ya fueron procesadas)');
       }
 
     } catch (error) {
@@ -106,11 +102,14 @@ class ReservaCleanupService {
              u.name as guest_name, u.phone_number
       FROM Reservations r
       LEFT JOIN Users u ON r.user_id = u.user_id
-      WHERE r.status = 'pendiente' 
-      AND (
-        (r.created_at IS NOT NULL AND julianday('now') - julianday(r.created_at) > ?)
-        OR 
-        (r.created_at IS NULL AND julianday('now') - julianday('2025-01-01') > 30)
+      WHERE (
+        r.status = 'pendiente_autorizacion'
+        AND r.created_at IS NOT NULL
+        AND julianday('now') - julianday(r.created_at) > ?
+      ) OR (
+        r.status = 'esperando_pago'
+        AND r.payment_due_at IS NOT NULL
+        AND datetime('now') > datetime(r.payment_due_at)
       )
       ORDER BY r.created_at ASC
     `;
@@ -120,16 +119,21 @@ class ReservaCleanupService {
   }
 
   /**
-   * Elimina las reservas pendientes expiradas
+   * Conserva el historial y marca las reservas pendientes como expiradas.
+   * El nombre se mantiene por compatibilidad con llamadas existentes.
    */
   async eliminarReservasExpiradas() {
     const sql = `
-      DELETE FROM Reservations 
-      WHERE status = 'pendiente' 
-      AND (
-        (created_at IS NOT NULL AND julianday('now') - julianday(created_at) > ?)
-        OR 
-        (created_at IS NULL AND julianday('now') - julianday('2025-01-01') > 30)
+      UPDATE Reservations
+      SET status = 'expirada', updated_at = datetime('now')
+      WHERE (
+        status = 'pendiente_autorizacion'
+        AND created_at IS NOT NULL
+        AND julianday('now') - julianday(created_at) > ?
+      ) OR (
+        status = 'esperando_pago'
+        AND payment_due_at IS NOT NULL
+        AND datetime('now') > datetime(payment_due_at)
       )
     `;
     
@@ -152,14 +156,14 @@ class ReservaCleanupService {
   /**
    * Notifica a los administradores sobre la limpieza (opcional)
    */
-  async notificarLimpieza(cantidad, reservasEliminadas) {
+  async notificarLimpieza(cantidad, reservasExpiradas) {
     try {
       // Solo registrar en logs por ahora
       // En el futuro se podría enviar notificación al grupo de administradores
-      logger.info(`📊 Resumen de limpieza: ${cantidad} reservas eliminadas`);
+      logger.info(`📊 Resumen de limpieza: ${cantidad} reservas expiradas`);
       
       if (cantidad > 5) {
-        logger.warn(`⚠️ Se eliminaron ${cantidad} reservas - número alto, revisar si es normal`);
+        logger.warn(`⚠️ Se expiraron ${cantidad} reservas - número alto, revisar si es normal`);
       }
     } catch (error) {
       logger.error('Error notificando limpieza:', error);

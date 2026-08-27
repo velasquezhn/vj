@@ -94,6 +94,7 @@ async function procesarMensaje(bot, remitente, mensaje, mensajeObj) {
             [ESTADOS_RESERVA.PERSONAS]: () => handleReservaState(bot, remitente, mensajeTexto, estado, datos, mensajeReserva),
             [ESTADOS_RESERVA.ALOJAMIENTO]: () => handleReservaState(bot, remitente, mensajeTexto, estado, datos, mensajeReserva),
             [ESTADOS_RESERVA.CONDICIONES]: () => handleReservaState(bot, remitente, mensajeTexto, estado, datos, mensajeReserva),
+            [ESTADOS_RESERVA.ESPERANDO_AUTORIZACION]: () => handleReservaState(bot, remitente, mensajeTexto, estado, datos, mensajeReserva),
             [ESTADOS_RESERVA.ESPERANDO_PAGO]: () => handleReservaState(bot, remitente, mensajeTexto, estado, datos, mensajeReserva),
             [ESTADOS_RESERVA.ESPERANDO_CONFIRMACION]: () => handleReservaState(bot, remitente, mensajeTexto, estado, datos, mensajeReserva),
             // Estados post-reserva
@@ -237,7 +238,7 @@ async function manejarPostReservaMenu(bot, remitente, mensaje, establecerEstado,
     try {
         switch (mensaje) {
             case '1':
-                if (reserva.tipo === 'pendiente') {
+                if (reserva.status === 'esperando_pago') {
                     // Enviar comprobante
                     await sendMessageWithDelay(bot, remitente, {
                         text: '📎 *ENVIAR COMPROBANTE*\n\n' +
@@ -247,6 +248,18 @@ async function manejarPostReservaMenu(bot, remitente, mensaje, establecerEstado,
                               'Escribe "menu" para cancelar y volver al menú principal.'
                     });
                     await establecerEstado(remitente, 'post_reserva_esperando_comprobante', { reserva });
+                } else if (reserva.status === 'pendiente_autorizacion') {
+                    await sendMessageWithDelay(bot, remitente, {
+                        text: '⏳ *PAGO AÚN NO AUTORIZADO*\n\n' +
+                              'Tu solicitud está siendo revisada por un administrador. Todavía no realices el pago ni envíes un comprobante. Te avisaremos por este chat cuando el pago sea autorizado.\n\n' +
+                              'Escribe "menu" para volver al menú principal.'
+                    });
+                } else if (reserva.status === 'pendiente_verificacion') {
+                    await sendMessageWithDelay(bot, remitente, {
+                        text: '🔎 *COMPROBANTE EN REVISIÓN*\n\n' +
+                              'Ya recibimos tu comprobante. Un administrador debe revisarlo y confirmar finalmente la reserva. Te notificaremos por este chat.\n\n' +
+                              'Escribe "menu" para volver al menú principal.'
+                    });
                 } else {
                     // Información de acceso
                     await sendMessageWithDelay(bot, remitente, {
@@ -353,13 +366,26 @@ async function procesarComprobantePostReserva(bot, remitente, mensajeObj, establ
             await establecerEstado(remitente, null);
             return;
         }
+
+        const Reserva = require('../../models/Reserva');
+        const reservaActual = await Reserva.findById(reserva.reservation_id);
+        if (!reservaActual || reservaActual.status !== 'esperando_pago') {
+            const mensajeEstado = reservaActual?.status === 'pendiente_verificacion'
+                ? 'Ya recibimos tu comprobante y está pendiente de revisión final.'
+                : 'El pago todavía no ha sido autorizado por un administrador. No envíes el comprobante aún.';
+            await sendMessageWithDelay(bot, remitente, {
+                text: `⛔ *COMPROBANTE NO HABILITADO*\n\n${mensajeEstado}\n\nTe avisaremos por este chat cuando cambie el estado.`
+            });
+            await establecerEstado(remitente, null);
+            return;
+        }
         
         const { descargarMedia } = require('../../utils/mediaUtils');
         const { guardarComprobante } = require('../../services/comprobanteService');
         const { notifyWhatsAppAdmins } = require('../../services/whatsappAdminService');
         const { buffer, mimetype, nombreArchivo } = await descargarMedia(mensajeObj.message || mensajeObj);
-        await guardarComprobante(reserva.reservation_id, buffer, mimetype, nombreArchivo);
-        await notifyWhatsAppAdmins(bot, reserva.reservation_id);
+        await guardarComprobante(reservaActual.reservation_id, buffer, mimetype, nombreArchivo);
+        await notifyWhatsAppAdmins(bot, reservaActual.reservation_id);
         
         await sendMessageWithDelay(bot, remitente, {
             text: '✅ *COMPROBANTE RECIBIDO*\n\n' +

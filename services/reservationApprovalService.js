@@ -2,6 +2,8 @@ const { runQuery, runExecute } = require('../db');
 const logger = require('../config/logger');
 const { WhatsAppCloudService } = require('./whatsappCloudService');
 const { sendReplyButtons } = require('./whatsappInteractiveService');
+const { establecerEstado, obtenerEstado } = require('./stateService');
+const { normalizeRecipient } = require('./whatsappCloudService');
 
 function trackingCode(id) {
   return `VJ-${String(id).padStart(6, '0')}`;
@@ -20,6 +22,18 @@ async function getReservationForReview(id) {
 
 async function notifyGuest(reservation, decision) {
   const client = new WhatsAppCloudService();
+  if (decision === 'payment_authorized') {
+    return sendReplyButtons(client, reservation.phone_number, {
+      header: 'Pago autorizado',
+      body: `✅ Tu solicitud *${reservation.confirmation_code}* fue autorizada por el administrador.\n\n` +
+        `Alojamiento: *${reservation.cabin_name}*\n` +
+        `Fechas: *${reservation.start_date} al ${reservation.end_date}*\n` +
+        `Total: *HNL ${Number(reservation.total_price).toLocaleString('es-HN')}*\n\n` +
+        'Ya puedes realizar el pago y enviar por este chat una foto o PDF del comprobante.',
+      footer: 'La reserva se confirma después de revisar el comprobante',
+      buttons: [{ id: 'main_menu', title: 'Menú principal' }]
+    });
+  }
   if (decision === 'approved') {
     return sendReplyButtons(client, reservation.phone_number, {
       header: 'Reserva confirmada',
@@ -48,6 +62,58 @@ async function notifyGuest(reservation, decision) {
   });
 }
 
+async function setGuestPaymentState(reservation) {
+  const jid = `${normalizeRecipient(reservation.phone_number)}@s.whatsapp.net`;
+  const current = await obtenerEstado(jid);
+  await establecerEstado(jid, 'esperando_pago', {
+    ...(current.datos || {}),
+    reservaId: reservation.reservation_id,
+    reservation_id: reservation.reservation_id,
+    confirmationCode: reservation.confirmation_code,
+    cabinId: reservation.cabin_id,
+    cabinName: reservation.cabin_name
+  });
+}
+
+async function authorizePayment(id, adminId, options = {}) {
+  let reservation = await getReservationForReview(id);
+  if (!reservation) return { ok: false, status: 404, code: 'RESERVATION_NOT_FOUND' };
+  if (reservation.status === 'esperando_pago') return { ok: true, alreadyProcessed: true, reservation };
+  if (reservation.status !== 'pendiente_autorizacion') {
+    return { ok: false, status: 409, code: 'INVALID_RESERVATION_STATUS', currentStatus: reservation.status };
+  }
+
+  const code = reservation.confirmation_code || trackingCode(id);
+  const hours = Math.min(Math.max(Number(process.env.PAYMENT_WINDOW_HOURS || 24), 1), 168);
+  const result = await runExecute(`UPDATE Reservations
+    SET status = 'esperando_pago', confirmation_code = ?, payment_authorized_at = CURRENT_TIMESTAMP,
+        payment_authorized_by = ?, payment_due_at = datetime('now', ?), notification_status = 'pending',
+        updated_at = CURRENT_TIMESTAMP
+    WHERE reservation_id = ? AND status = 'pendiente_autorizacion'
+      AND NOT EXISTS (
+        SELECT 1 FROM Reservations other
+        WHERE other.cabin_id = Reservations.cabin_id AND other.reservation_id <> Reservations.reservation_id
+          AND other.status IN ('esperando_pago', 'pendiente_verificacion', 'confirmada', 'confirmado')
+          AND date(other.start_date) < date(Reservations.end_date)
+          AND date(other.end_date) > date(Reservations.start_date)
+      )`, [code, adminId, `+${hours} hours`, id]);
+  if (result.changes !== 1) return { ok: false, status: 409, code: 'CABIN_NO_LONGER_AVAILABLE' };
+
+  reservation = await getReservationForReview(id);
+  await setGuestPaymentState(reservation);
+  try {
+    await (options.notify || notifyGuest)(reservation, 'payment_authorized');
+    await setNotificationStatus(id, 'sent');
+    reservation.notification_status = 'sent';
+  } catch (error) {
+    await setNotificationStatus(id, 'failed');
+    reservation.notification_status = 'failed';
+    logger.error('Pago autorizado, pero falló el aviso al huésped', { reservationId: id, code: error.response?.data?.error?.code });
+  }
+  logger.info('Pago autorizado por administrador', { reservationId: id, adminId });
+  return { ok: true, reservation };
+}
+
 async function setNotificationStatus(id, status) {
   await runExecute(
     'UPDATE Reservations SET notification_status = ?, updated_at = CURRENT_TIMESTAMP WHERE reservation_id = ?',
@@ -61,7 +127,7 @@ async function approveReservation(id, adminId, options = {}) {
   if (['confirmada', 'confirmado'].includes(reservation.status)) {
     return { ok: true, alreadyProcessed: true, reservation };
   }
-  if (reservation.status !== 'pendiente') {
+  if (reservation.status !== 'pendiente_verificacion') {
     return { ok: false, status: 409, code: 'INVALID_RESERVATION_STATUS', currentStatus: reservation.status };
   }
   if (!reservation.comprobante_nombre_archivo) {
@@ -73,7 +139,7 @@ async function approveReservation(id, adminId, options = {}) {
     UPDATE Reservations
     SET status = 'confirmada', confirmation_code = ?, reviewed_at = CURRENT_TIMESTAMP,
         reviewed_by = ?, rejection_reason = NULL, notification_status = 'pending', updated_at = CURRENT_TIMESTAMP
-    WHERE reservation_id = ? AND status = 'pendiente'
+    WHERE reservation_id = ? AND status = 'pendiente_verificacion'
       AND NOT EXISTS (
         SELECT 1 FROM Reservations other
         WHERE other.cabin_id = Reservations.cabin_id
@@ -108,7 +174,8 @@ async function approveReservation(id, adminId, options = {}) {
 async function rejectReservation(id, adminId, reason, options = {}) {
   const current = await getReservationForReview(id);
   if (!current) return { ok: false, status: 404, code: 'RESERVATION_NOT_FOUND' };
-  if (current.status !== 'pendiente') {
+  const rejectable = ['pendiente_autorizacion', 'esperando_pago', 'pendiente_verificacion'];
+  if (!rejectable.includes(current.status)) {
     return { ok: false, status: 409, code: 'INVALID_RESERVATION_STATUS', currentStatus: current.status };
   }
 
@@ -117,7 +184,7 @@ async function rejectReservation(id, adminId, reason, options = {}) {
     UPDATE Reservations
     SET status = 'rechazada', confirmation_code = ?, reviewed_at = CURRENT_TIMESTAMP,
         reviewed_by = ?, rejection_reason = ?, notification_status = 'pending', updated_at = CURRENT_TIMESTAMP
-    WHERE reservation_id = ? AND status = 'pendiente'
+    WHERE reservation_id = ? AND status IN ('pendiente_autorizacion', 'esperando_pago', 'pendiente_verificacion')
   `, [code, adminId, reason, id]);
   if (result.changes !== 1) return { ok: false, status: 409, code: 'ALREADY_PROCESSED' };
 
@@ -138,4 +205,4 @@ async function rejectReservation(id, adminId, reason, options = {}) {
   return { ok: true, reservation };
 }
 
-module.exports = { approveReservation, rejectReservation, getReservationForReview, trackingCode };
+module.exports = { authorizePayment, approveReservation, rejectReservation, getReservationForReview, trackingCode };

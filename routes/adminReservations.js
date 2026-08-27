@@ -14,7 +14,7 @@ const {
 } = require('../middleware/apiValidation');
 const logger = require('../config/logger');
 const { COMPROBANTES_DIR, ALLOWED_MIME_TYPES, MAX_RECEIPT_BYTES } = require('../services/comprobanteService');
-const { approveReservation, rejectReservation } = require('../services/reservationApprovalService');
+const { authorizePayment, approveReservation, rejectReservation } = require('../services/reservationApprovalService');
 
 // Setup multer for file uploads to public/comprobantes
 const storage = multer.diskStorage({
@@ -52,7 +52,7 @@ const upload = multer({
  *         name: status
  *         schema:
  *           type: string
- *           enum: [pendiente, confirmado, cancelado, completado]
+ *           enum: [pendiente_autorizacion, esperando_pago, pendiente_verificacion, confirmada, rechazada, cancelada, expirada]
  *           example: confirmado
  *         description: Filtrar por estado de la reserva
  *       - in: query
@@ -134,7 +134,8 @@ router.get('/',
     let sql = `
       SELECT r.reservation_id, r.cabin_id, r.user_id, r.start_date, r.end_date, r.status, r.total_price, r.comprobante_nombre_archivo,
              r.personas, r.confirmation_code, r.receipt_received_at, r.reviewed_at, r.reviewed_by,
-             r.rejection_reason, r.notification_status,
+             r.rejection_reason, r.notification_status, r.payment_authorized_at,
+             r.payment_authorized_by, r.payment_due_at,
              u.name AS user_name,
              u.phone_number AS phone_number,
              c.name AS cabin_name,
@@ -218,7 +219,29 @@ router.get('/',
   }
 });
 
-// POST /:id/approve - aprobación operativa desde el panel (reemplaza comandos de grupo)
+// POST /:id/authorize-payment - autorización previa obligatoria antes del comprobante
+router.post('/:id/authorize-payment',
+  authenticateToken,
+  validateNumericId('id'),
+  logAdminActivity('authorize_reservation_payment'),
+  async (req, res) => {
+    try {
+      const result = await authorizePayment(req.params.id, req.user.adminId);
+      if (!result.ok) return res.status(result.status).json({ success: false, code: result.code, currentStatus: result.currentStatus });
+      return res.json({
+        success: true,
+        message: result.alreadyProcessed ? 'El pago ya estaba autorizado' : 'Pago autorizado',
+        data: result.reservation,
+        notificationSent: result.reservation.notification_status === 'sent'
+      });
+    } catch (error) {
+      logger.error('Error autorizando pago', { reservationId: req.params.id, error: error.message });
+      return res.status(500).json({ success: false, code: 'PAYMENT_AUTHORIZATION_ERROR' });
+    }
+  }
+);
+
+// POST /:id/approve - confirmación final después de verificar el comprobante
 router.post('/:id/approve',
   authenticateToken,
   validateNumericId('id'),
@@ -319,9 +342,9 @@ router.post('/:id/reject',
  *                 description: Fecha de check-out (YYYY-MM-DD)
  *               status:
  *                 type: string
- *                 enum: [pendiente, confirmado, cancelado, completado]
- *                 default: pendiente
- *                 example: pendiente
+ *                 enum: [pendiente_autorizacion, esperando_pago, pendiente_verificacion, confirmada, rechazada, cancelada, expirada]
+ *                 default: pendiente_autorizacion
+ *                 example: pendiente_autorizacion
  *               total_price:
  *                 type: number
  *                 format: decimal
@@ -371,7 +394,7 @@ router.post('/:id/reject',
  *                       example: 2024-08-17
  *                     status:
  *                       type: string
- *                       example: pendiente
+ *                       example: pendiente_autorizacion
  *                     total_price:
  *                       type: number
  *                       example: 300.00
@@ -723,7 +746,10 @@ router.get('/upcoming',
       LEFT JOIN Cabins c ON r.cabin_id = c.cabin_id
       WHERE 
         (r.start_date BETWEEN ? AND ? OR r.end_date BETWEEN ? AND ?)
-        AND r.status IN ('confirmado', 'pendiente', 'confirmada')
+        AND r.status IN (
+          'confirmado', 'confirmada', 'pendiente_autorizacion',
+          'esperando_pago', 'pendiente_verificacion'
+        )
       ORDER BY 
         CASE 
           WHEN r.start_date = ? OR r.end_date = ? THEN 1

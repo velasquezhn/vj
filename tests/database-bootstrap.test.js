@@ -29,7 +29,8 @@ describe('database bootstrap', () => {
     const columns = await query(dbPath, 'PRAGMA table_info(Reservations)');
     expect(columns.map((row) => row.name)).toEqual(expect.arrayContaining([
       'personas', 'comprobante_nombre_archivo', 'confirmation_code', 'receipt_received_at',
-      'reviewed_at', 'reviewed_by', 'rejection_reason', 'notification_status'
+      'reviewed_at', 'reviewed_by', 'rejection_reason', 'notification_status',
+      'payment_authorized_at', 'payment_authorized_by', 'payment_due_at'
     ]));
   });
 
@@ -73,7 +74,7 @@ describe('database bootstrap', () => {
         const user = await runExecute("INSERT INTO Users(phone_number,name) VALUES('50499990000','Prueba')");
         const cabin = (await runQuery('SELECT cabin_id FROM Cabins LIMIT 1'))[0];
         await runExecute(\`INSERT INTO Reservations(user_id,cabin_id,start_date,end_date,status,total_price,personas,comprobante_nombre_archivo,confirmation_code)
-          VALUES(?,?, '2026-11-01','2026-11-03','pendiente',3000,2,'/comprobante.jpg','VJ-000001')\`, [user.lastID, cabin.cabin_id]);
+          VALUES(?,?, '2026-11-01','2026-11-03','pendiente_verificacion',3000,2,'/comprobante.jpg','VJ-000001')\`, [user.lastID, cabin.cabin_id]);
         const sent = [];
         const result = await sendPendingReviewsToAdmin({ sendMessage: async (_to, body) => { sent.push(body); } }, '50487373838');
         if (result.sent !== 1 || !sent.some((body) => body.interactive)) process.exitCode = 2;
@@ -83,8 +84,8 @@ describe('database bootstrap', () => {
     execFileSync(process.execPath, ['-e', script], { cwd: path.join(__dirname, '..'), env });
   });
 
-  test('creates the pending reservation before requesting a receipt', async () => {
-    const env = { ...process.env, DB_PATH: dbPath, NODE_ENV: 'test', WHATSAPP_ADMIN_NUMBERS: '' };
+  test('requires authorization before receipt and final confirmation', async () => {
+    const env = { ...process.env, DB_PATH: dbPath, RECEIPTS_DIR: path.join(directory, 'receipts'), NODE_ENV: 'test', WHATSAPP_ADMIN_NUMBERS: '' };
     execFileSync(process.execPath, ['scripts/migrate-database.js'], { cwd: path.join(__dirname, '..'), env });
     execFileSync(process.execPath, ['scripts/seed-database.js'], { cwd: path.join(__dirname, '..'), env });
 
@@ -111,16 +112,58 @@ describe('database bootstrap', () => {
     `);
     expect(reservations).toHaveLength(1);
     expect(reservations[0]).toEqual(expect.objectContaining({
-      status: 'pendiente', confirmation_code: 'VJ-000001', name: 'Cliente Prueba', phone_number: '50487373838'
+      status: 'pendiente_autorizacion', confirmation_code: 'VJ-000001', name: 'Cliente Prueba', phone_number: '50487373838'
     }));
 
-    await query(dbPath, "UPDATE Reservations SET comprobante_nombre_archivo = '/comprobantes/prueba.pdf' WHERE reservation_id = 1");
+    const blockedReceiptScript = `
+      const { guardarComprobante } = require('./services/comprobanteService');
+      const { closeDatabase } = require('./db');
+      (async () => {
+        let blocked = false;
+        try {
+          await guardarComprobante(1, Buffer.from('no-autorizado'), 'application/pdf', 'no-autorizado.pdf');
+        } catch (error) {
+          blocked = /no está habilitado/.test(error.message);
+        }
+        if (!blocked) process.exitCode = 3;
+        await closeDatabase();
+      })().catch((error) => { console.error(error); process.exit(1); });
+    `;
+    execFileSync(process.execPath, ['-e', blockedReceiptScript], { cwd: path.join(__dirname, '..'), env });
+    expect((await query(dbPath, 'SELECT status, comprobante_nombre_archivo FROM Reservations WHERE reservation_id = 1'))[0])
+      .toEqual({ status: 'pendiente_autorizacion', comprobante_nombre_archivo: null });
+
+    const authorizeScript = `
+      const { authorizePayment } = require('./services/reservationApprovalService');
+      const { closeDatabase } = require('./db');
+      (async () => {
+        const result = await authorizePayment(1, 99, { notify: async () => ({ ok: true }) });
+        if (!result.ok || result.reservation.status !== 'esperando_pago') process.exitCode = 4;
+        await closeDatabase();
+      })().catch((error) => { console.error(error); process.exit(1); });
+    `;
+    execFileSync(process.execPath, ['-e', authorizeScript], { cwd: path.join(__dirname, '..'), env });
+    const authorized = await query(dbPath, 'SELECT status, payment_authorized_by, payment_authorized_at FROM Reservations WHERE reservation_id = 1');
+    expect(authorized[0].status).toBe('esperando_pago');
+    expect(authorized[0].payment_authorized_by).toBe(99);
+    expect(authorized[0].payment_authorized_at).toBeTruthy();
+
+    const receiptScript = `
+      const { guardarComprobante } = require('./services/comprobanteService');
+      const { closeDatabase } = require('./db');
+      (async () => {
+        const result = await guardarComprobante(1, Buffer.from('pdf-prueba'), 'application/pdf', 'prueba.pdf');
+        if (!result || result.status !== 'pendiente_verificacion') process.exitCode = 5;
+        await closeDatabase();
+      })().catch((error) => { console.error(error); process.exit(1); });
+    `;
+    execFileSync(process.execPath, ['-e', receiptScript], { cwd: path.join(__dirname, '..'), env });
     const approveScript = `
       const { approveReservation } = require('./services/reservationApprovalService');
       const { closeDatabase } = require('./db');
       (async () => {
         const result = await approveReservation(1, 99, { notify: async () => ({ ok: true }) });
-        if (!result.ok || result.reservation.notification_status !== 'sent') process.exitCode = 3;
+        if (!result.ok || result.reservation.notification_status !== 'sent') process.exitCode = 6;
         await closeDatabase();
       })().catch((error) => { console.error(error); process.exit(1); });
     `;

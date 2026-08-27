@@ -223,11 +223,14 @@ async function updateComprobante(reservationId, comprobanteData, comprobanteCont
     try {
         const sql = `
             UPDATE Reservations
-            SET comprobante_nombre_archivo = ?
-            WHERE reservation_id = ?
+            SET comprobante_nombre_archivo = ?, status = 'pendiente_verificacion',
+                receipt_received_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+            WHERE reservation_id = ? AND status = 'esperando_pago'
         `;
-        await runExecute(sql, [comprobanteNombreArchivo, reservationId]);
-        return { success: true };
+        const result = await runExecute(sql, [comprobanteNombreArchivo, reservationId]);
+        return result.changes === 1
+            ? { success: true }
+            : { success: false, error: 'El pago no está autorizado para esta reserva' };
     } catch (error) {
         logger.error('Error updating comprobante:', error);
         return { success: false, error: error.message || 'Error desconocido' };
@@ -313,7 +316,7 @@ async function checkRecentPendingReservation(phoneNumber) {
             FROM Reservations r
             JOIN Users u ON r.user_id = u.user_id
             WHERE u.phone_number = ? 
-            AND r.status = 'pendiente'
+            AND r.status = 'pendiente_autorizacion'
             AND datetime('now') < datetime(r.created_at, '+2 minutes')
             ORDER BY r.created_at DESC
             LIMIT 1

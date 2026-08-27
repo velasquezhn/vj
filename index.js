@@ -2,6 +2,7 @@ require('dotenv').config();
 const { startServer } = require('./adminServer');
 const { closeDatabase } = require('./db');
 const backupService = require('./services/backupService');
+const reservaCleanupService = require('./services/reservaCleanupService');
 
 const server = startServer();
 let shuttingDown = false;
@@ -15,6 +16,7 @@ async function shutdown(signal) {
   server.close(async () => {
     try {
       backupService.stop();
+      reservaCleanupService.detener();
       await closeDatabase();
       process.exit(0);
     } catch (error) {

@@ -193,7 +193,7 @@ async function manejarPostReserva(bot, remitente, mensaje, establecerEstado) {
         text: '⚠️ No encontramos reservas activas o pendientes asociadas a este número.\n\n' +
               '🔹 Solo pueden acceder usuarios con:\n' +
               '   • Reservas activas (confirmadas)\n' +
-              '   • Reservas pendientes (esperando comprobante)\n\n' +
+              '   • Solicitudes pendientes de autorización o pago\n\n' +
               '1. Hablar con un agente\n' +
               '2. Volver al menú principal\n\n' +
               'Por favor, responde con 1 o 2.\n\nEscribe "menu" para ir al menú principal.'
@@ -205,11 +205,21 @@ async function manejarPostReserva(bot, remitente, mensaje, establecerEstado) {
     if (mensaje === '8') {
       let menuTexto = '🎯 *AYUDA POST RESERVA*\n\n';
       
-      if (reserva.tipo === 'pendiente') {
-        menuTexto += '📋 Estado: *Pendiente de comprobante*\n';
+      if (reserva.status === 'pendiente_autorizacion') {
+        menuTexto += '📋 Estado: *Esperando autorización de pago*\n';
+        menuTexto += `📅 Reserva ID: ${reserva.reservation_id}\n`;
+        menuTexto += `👤 Huésped: ${reserva.guest_name}\n\n`;
+        menuTexto += '1. ⏳ Consultar estado\n';
+      } else if (reserva.status === 'esperando_pago') {
+        menuTexto += '📋 Estado: *Pago autorizado; comprobante pendiente*\n';
         menuTexto += `📅 Reserva ID: ${reserva.reservation_id}\n`;
         menuTexto += `👤 Huésped: ${reserva.guest_name}\n\n`;
         menuTexto += '1. 📎 Enviar Comprobante\n';
+      } else if (reserva.status === 'pendiente_verificacion') {
+        menuTexto += '📋 Estado: *Comprobante recibido; revisión final pendiente*\n';
+        menuTexto += `📅 Reserva ID: ${reserva.reservation_id}\n`;
+        menuTexto += `👤 Huésped: ${reserva.guest_name}\n\n`;
+        menuTexto += '1. ⏳ Consultar estado\n';
       } else {
         menuTexto += '📋 Estado: *Reserva confirmada*\n';
         menuTexto += `📅 Reserva ID: ${reserva.reservation_id}\n`;
@@ -250,7 +260,10 @@ async function buscarReservaActivaOPendiente(telefono) {
              r.start_date as check_in_date, r.end_date as check_out_date
       FROM Reservations r
       JOIN Users u ON r.user_id = u.user_id
-      WHERE u.phone_number = ? AND r.status IN ('confirmada', 'confirmado', 'pendiente')
+      WHERE u.phone_number = ? AND r.status IN (
+        'confirmada', 'confirmado', 'pendiente_autorizacion',
+        'esperando_pago', 'pendiente_verificacion'
+      )
       ORDER BY r.created_at DESC
       LIMIT 1
     `;
@@ -262,10 +275,9 @@ async function buscarReservaActivaOPendiente(telefono) {
     if (rows && rows.length > 0) {
       const reserva = rows[0];
       
-      let tipo = 'activa';
-      if (reserva.status === 'pendiente') {
-        tipo = 'pendiente';
-      }
+      const tipo = ['confirmada', 'confirmado'].includes(reserva.status)
+        ? 'activa'
+        : 'pendiente';
       
       const resultado = { ...reserva, tipo };
       console.log('[DEBUG] Resultado:', resultado);

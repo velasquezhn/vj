@@ -189,11 +189,15 @@ const validateAdminReservation = (req, res, next) => {
       });
     }
 
-    const validStatuses = ['pendiente', 'confirmado', 'confirmada', 'cancelado', 'completado'];
+    const validStatuses = [
+      'pendiente_autorizacion', 'esperando_pago', 'pendiente_verificacion',
+      'confirmado', 'confirmada', 'cancelado', 'cancelada', 'rechazada',
+      'completado', 'completada', 'expirada'
+    ];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({
         success: false,
-        error: 'Estado debe ser: pendiente, confirmado, confirmada, cancelado o completado'
+        error: `Estado no permitido: ${status}`
       });
     }
 
@@ -338,8 +342,13 @@ function validateReservationFilters(req, res, next) {
     }
 
     // Validar status si se proporciona
-    if (status && !['pending', 'confirmed', 'cancelled', 'completed', 'pendiente', 'confirmado', 'cancelado', 'completado'].includes(status)) {
-      errors.push('Status debe ser: pending, confirmed, cancelled, completed, pendiente, confirmado, cancelado o completado');
+    const validStatuses = [
+      'pendiente_autorizacion', 'esperando_pago', 'pendiente_verificacion',
+      'confirmado', 'confirmada', 'cancelado', 'cancelada', 'rechazada',
+      'completado', 'completada', 'expirada'
+    ];
+    if (status && !validStatuses.includes(status)) {
+      errors.push('Status de reserva no permitido');
     }
 
     // Validar cabin_id si se proporciona
