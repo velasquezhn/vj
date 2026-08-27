@@ -48,6 +48,8 @@ Copie `.env.example`; nunca versione `.env` ni credenciales.
 - `PUBLIC_BASE_URL`: URL HTTPS pública del backend, usada para abrir comprobantes desde los avisos administrativos.
 - `WHATSAPP_CABIN_GALLERY_LIMIT`: máximo de fotografías enviadas al mostrar una cabaña (1 a 5; recomendado y predeterminado: 4).
 - `PAYMENT_WINDOW_HOURS`: plazo informado y reservado para que el huésped envíe el comprobante después de la autorización (24 por defecto).
+- `NOTIFICATION_QUEUE_ENABLED`: activa la cola persistente de entrega (recomendado: `true`).
+- `NOTIFICATION_QUEUE_INTERVAL_MS`: frecuencia de revisión de mensajes pendientes (60 000 ms por defecto; mínimo 15 000).
 - `OPENWEATHER_API_KEY`: opcional; habilita el pronóstico del menú sin guardar la clave en el código.
 
 ## Configuración de Meta
@@ -97,7 +99,7 @@ Los números se escriben con código de país y solo dígitos (por ejemplo, `504
 
 Al agregar un administrador, el sistema intenta enviarle una confirmación y reenvía hasta cinco solicitudes pendientes de autorización o de verificación. El botón **Enviar prueba** permite repetirlo. Si Meta lo bloquea, el panel conserva el número y muestra la instrucción de enviar `/admin` desde ese teléfono para abrir la ventana de 24 horas.
 
-La aprobación vuelve a comprobar disponibilidad, registra administrador y fecha de revisión, actualiza el estado y notifica al huésped. Si WhatsApp no permite el aviso por estar fuera de la ventana de 24 horas, la reserva conserva la decisión y muestra `notification_status=failed` para seguimiento.
+La aprobación vuelve a comprobar disponibilidad, registra administrador y fecha de revisión, actualiza el estado y notifica al huésped. Si Meta o la red fallan temporalmente, el aviso queda en `notification_status=queued` y se reintenta desde una cola persistente aun después de reiniciar el servidor. El superadministrador puede revisar y reintentar entregas desde **Mensajes pendientes**; después de agotar los intentos se marca como fallida para atención manual.
 
 ## Base de datos y Docker
 

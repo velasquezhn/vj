@@ -5,6 +5,7 @@ const { sendReplyButtons } = require('./whatsappInteractiveService');
 const { establecerEstado, obtenerEstado } = require('./stateService');
 const { normalizeRecipient } = require('./whatsappCloudService');
 const { getPaymentSettings, paymentAmounts } = require('./paymentSettingsService');
+const notificationQueue = require('./notificationQueueService');
 
 function trackingCode(id) {
   return `VJ-${String(id).padStart(6, '0')}`;
@@ -21,8 +22,8 @@ async function getReservationForReview(id) {
   return rows[0] || null;
 }
 
-async function notifyGuest(reservation, decision) {
-  const client = new WhatsAppCloudService();
+async function notifyGuest(reservation, decision, providedClient = null) {
+  const client = providedClient || new WhatsAppCloudService();
   if (decision === 'payment_authorized') {
     const payment = await getPaymentSettings();
     const amounts = paymentAmounts(reservation.total_price, payment.deposit_percentage);
@@ -121,8 +122,15 @@ async function authorizePayment(id, adminId, options = {}) {
     await setNotificationStatus(id, 'sent');
     reservation.notification_status = 'sent';
   } catch (error) {
-    await setNotificationStatus(id, 'failed');
-    reservation.notification_status = 'failed';
+    await notificationQueue.enqueue({
+      recipient: reservation.phone_number,
+      kind: 'guest_decision',
+      payload: { decision: 'payment_authorized' },
+      reservationId: id,
+      idempotencyKey: `reservation:${id}:payment_authorized`
+    });
+    await setNotificationStatus(id, 'queued');
+    reservation.notification_status = 'queued';
     logger.error('Pago autorizado, pero falló el aviso al huésped', { reservationId: id, code: error.response?.data?.error?.code });
   }
   logger.info('Pago autorizado por administrador', { reservationId: id, adminId });
@@ -175,8 +183,15 @@ async function approveReservation(id, adminId, options = {}) {
     await setNotificationStatus(id, 'sent');
     reservation.notification_status = 'sent';
   } catch (error) {
-    await setNotificationStatus(id, 'failed');
-    reservation.notification_status = 'failed';
+    await notificationQueue.enqueue({
+      recipient: reservation.phone_number,
+      kind: 'guest_decision',
+      payload: { decision: 'approved' },
+      reservationId: id,
+      idempotencyKey: `reservation:${id}:approved`
+    });
+    await setNotificationStatus(id, 'queued');
+    reservation.notification_status = 'queued';
     logger.error('Reserva confirmada, pero falló la notificación de WhatsApp', {
       reservationId: id, code: error.response?.data?.error?.code
     });
@@ -209,8 +224,15 @@ async function rejectReservation(id, adminId, reason, options = {}) {
     await setNotificationStatus(id, 'sent');
     reservation.notification_status = 'sent';
   } catch (error) {
-    await setNotificationStatus(id, 'failed');
-    reservation.notification_status = 'failed';
+    await notificationQueue.enqueue({
+      recipient: reservation.phone_number,
+      kind: 'guest_decision',
+      payload: { decision: 'rejected' },
+      reservationId: id,
+      idempotencyKey: `reservation:${id}:rejected`
+    });
+    await setNotificationStatus(id, 'queued');
+    reservation.notification_status = 'queued';
     logger.error('Reserva rechazada, pero falló la notificación de WhatsApp', {
       reservationId: id, code: error.response?.data?.error?.code
     });
@@ -220,4 +242,4 @@ async function rejectReservation(id, adminId, reason, options = {}) {
   return { ok: true, reservation };
 }
 
-module.exports = { authorizePayment, approveReservation, rejectReservation, getReservationForReview, trackingCode };
+module.exports = { authorizePayment, approveReservation, rejectReservation, getReservationForReview, trackingCode, notifyGuest };

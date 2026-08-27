@@ -6,6 +6,7 @@ const { obtenerEstado, establecerEstado } = require('./stateService');
 const { activeAdminNumbers } = require('./whatsappAdminSettingsService');
 const { runQuery } = require('../db');
 const { getPaymentSettings, paymentAmounts } = require('./paymentSettingsService');
+const notificationQueue = require('./notificationQueueService');
 
 async function getAdminNumbers() {
   const configured = await activeAdminNumbers();
@@ -94,6 +95,12 @@ async function notifyWhatsAppAdmins(bot, reservationId) {
       sent += 1;
     } catch (error) {
       failed += 1;
+      await notificationQueue.enqueue({
+        recipient: number,
+        kind: 'admin_review',
+        reservationId,
+        idempotencyKey: `reservation:${reservationId}:admin_review:${number}`
+      });
       logger.error('No se pudo avisar a un administrador por WhatsApp', {
         reservationId, code: error.response?.data?.error?.code
       });
@@ -260,6 +267,6 @@ async function handleAdminMessage(bot, sender, text) {
 }
 
 module.exports = {
-  getAdminNumbers, isAdminSender, parseReservationId, notifyWhatsAppAdmins,
+  getAdminNumbers, isAdminSender, parseReservationId, notifyWhatsAppAdmins, sendReview,
   notifyAdminsOfGuestRequest, sendPendingReviewsToAdmin, handleAdminMessage, reviewText
 };

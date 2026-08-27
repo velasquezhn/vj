@@ -113,6 +113,24 @@ CREATE TABLE IF NOT EXISTS AdminAuditLogs (
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (admin_id) REFERENCES Admins(admin_id)
 );
+CREATE TABLE IF NOT EXISTS OutboundMessages (
+  outbound_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  idempotency_key TEXT UNIQUE,
+  recipient TEXT NOT NULL,
+  message_kind TEXT NOT NULL DEFAULT 'generic',
+  payload_json TEXT NOT NULL DEFAULT '{}',
+  reservation_id INTEGER,
+  status TEXT NOT NULL DEFAULT 'pending',
+  attempts INTEGER NOT NULL DEFAULT 0,
+  max_attempts INTEGER NOT NULL DEFAULT 5,
+  next_attempt_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  last_error_code TEXT,
+  provider_message_id TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  sent_at TEXT,
+  FOREIGN KEY (reservation_id) REFERENCES Reservations(reservation_id)
+);
 INSERT OR IGNORE INTO AppSettings(setting_key, setting_value) VALUES ('payment_deposit_percentage', '50');
 INSERT OR IGNORE INTO AppSettings(setting_key, setting_value) VALUES ('payment_bank_accounts', '[]');
 INSERT OR IGNORE INTO AppSettings(setting_key, setting_value) VALUES ('payment_notes', '');
@@ -129,6 +147,8 @@ CREATE INDEX IF NOT EXISTS idx_user_states_expires ON UserStates(expires_at);
 CREATE INDEX IF NOT EXISTS idx_activities_menu ON Activities(activo, incluir_en_menu, orden_menu);
 CREATE INDEX IF NOT EXISTS idx_admin_audit_created ON AdminAuditLogs(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_admin_audit_admin ON AdminAuditLogs(admin_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_outbound_due ON OutboundMessages(status, next_attempt_at);
+CREATE INDEX IF NOT EXISTS idx_outbound_reservation ON OutboundMessages(reservation_id, created_at DESC);
 CREATE TRIGGER IF NOT EXISTS trg_reservation_no_overlap_insert
 BEFORE INSERT ON Reservations
 WHEN NEW.status IN ('pendiente_autorizacion', 'esperando_pago', 'pendiente_verificacion', 'confirmada', 'confirmado')
@@ -179,6 +199,13 @@ async function migrate() {
     WHERE status = 'pendiente' AND comprobante_nombre_archivo IS NOT NULL`);
   await exec(`UPDATE Reservations SET status = 'pendiente_autorizacion'
     WHERE status = 'pendiente' AND comprobante_nombre_archivo IS NULL`);
+  await exec(`DELETE FROM WhatsAppAdmins WHERE phone_number IN ('92083526', '50492083526')`);
+  await exec(`INSERT INTO WhatsAppAdmins(phone_number, display_name, is_active)
+    VALUES ('50487373838', 'Carlos Velasquez', 1)
+    ON CONFLICT(phone_number) DO UPDATE SET display_name = excluded.display_name, is_active = 1, updated_at = CURRENT_TIMESTAMP`);
+  await exec(`INSERT INTO WhatsAppAdmins(phone_number, display_name, is_active)
+    VALUES ('50499705022', 'Gregorio Gonzalez', 1)
+    ON CONFLICT(phone_number) DO UPDATE SET display_name = excluded.display_name, is_active = 1, updated_at = CURRENT_TIMESTAMP`);
   console.log(`Database migrated: ${dbPath}`);
 }
 

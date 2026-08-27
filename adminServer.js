@@ -49,6 +49,7 @@ const alojamientosService = require('./services/alojamientosService');
 const actividadesService = require('./services/actividadesService');
 const backupService = require('./services/backupService');
 const reservaCleanupService = require('./services/reservaCleanupService');
+const notificationQueueService = require('./services/notificationQueueService');
 
 const app = express();
 app.disable('x-powered-by');
@@ -559,6 +560,7 @@ const adminActivitiesRoutes = require('./routes/adminActivities');
 const adminWhatsAppAdminsRoutes = require('./routes/adminWhatsAppAdmins');
 const adminPaymentSettingsRoutes = require('./routes/adminPaymentSettings');
 const adminAuditLogsRoutes = require('./routes/adminAuditLogs');
+const adminNotificationsRoutes = require('./routes/adminNotifications');
 
 // Dashboard, Cabin Types, Activities y Admin Users routes (PROTEGIDAS)
 app.use('/admin/dashboard', authenticateToken, adminDashboardRoutes);
@@ -568,6 +570,7 @@ app.use('/admin/whatsapp-admins', authenticateToken, authorizeRole('superadmin')
 app.use('/admin/payment-settings', authenticateToken, authorizeRole('superadmin'), adminPaymentSettingsRoutes);
 app.use('/admin/admin-users', authenticateToken, authorizeRole('superadmin'), adminUsersRoutes);
 app.use('/admin/audit-logs', authenticateToken, authorizeRole('superadmin'), adminAuditLogsRoutes);
+app.use('/admin/notifications', authenticateToken, authorizeRole('superadmin'), adminNotificationsRoutes);
 
 // Conversation States routes (PROTEGIDAS)
 app.get('/admin/conversation-states', authenticateToken, authorizeRole('superadmin'), async (req, res) => {
@@ -1019,6 +1022,7 @@ function startServer() {
       console.log('🔄 Iniciando servicio de backup automático...');
       backupService.start();
       reservaCleanupService.iniciar();
+      notificationQueueService.start();
     } catch (error) {
       logger.error('Database is not ready; run pnpm db:migrate before starting', { error: error.message });
       server.close(() => process.exit(1));

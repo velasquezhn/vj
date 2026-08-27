@@ -32,7 +32,7 @@ describe('database bootstrap', () => {
     execFileSync(process.execPath, ['scripts/migrate-database.js'], { cwd: path.join(__dirname, '..'), env });
     execFileSync(process.execPath, ['scripts/migrate-database.js'], { cwd: path.join(__dirname, '..'), env });
     const tables = await query(dbPath, "SELECT name FROM sqlite_master WHERE type='table'");
-    expect(tables.map((row) => row.name)).toEqual(expect.arrayContaining(['Admins', 'Reservations', 'UserStates', 'WhatsAppEvents', 'AppSettings']));
+    expect(tables.map((row) => row.name)).toEqual(expect.arrayContaining(['Admins', 'Reservations', 'UserStates', 'WhatsAppEvents', 'AppSettings', 'OutboundMessages']));
     const columns = await query(dbPath, 'PRAGMA table_info(Reservations)');
     expect(columns.map((row) => row.name)).toEqual(expect.arrayContaining([
       'personas', 'comprobante_nombre_archivo', 'confirmation_code', 'receipt_received_at',
@@ -68,6 +68,39 @@ describe('database bootstrap', () => {
     expect(backups).toHaveLength(1);
     const integrity = await query(path.join(backupDir, backups[0]), 'PRAGMA integrity_check');
     expect(integrity[0].integrity_check).toBe('ok');
+  });
+
+  test('configures the authorized WhatsApp administrators and removes the retired number', async () => {
+    const env = { ...process.env, DB_PATH: dbPath, NODE_ENV: 'test' };
+    execFileSync(process.execPath, ['scripts/migrate-database.js'], { cwd: path.join(__dirname, '..'), env });
+    const admins = await query(dbPath, 'SELECT phone_number, display_name, is_active FROM WhatsAppAdmins ORDER BY phone_number');
+    expect(admins).toEqual(expect.arrayContaining([
+      { phone_number: '50487373838', display_name: 'Carlos Velasquez', is_active: 1 },
+      { phone_number: '50499705022', display_name: 'Gregorio Gonzalez', is_active: 1 }
+    ]));
+    expect(admins.some((admin) => ['92083526', '50492083526'].includes(admin.phone_number))).toBe(false);
+  });
+
+  test('persists failed outbound messages and retries them successfully', async () => {
+    const env = { ...process.env, DB_PATH: dbPath, NODE_ENV: 'test' };
+    execFileSync(process.execPath, ['scripts/migrate-database.js'], { cwd: path.join(__dirname, '..'), env });
+    const script = `
+      const queue = require('./services/notificationQueueService');
+      const { runExecute, runQuery, closeDatabase } = require('./db');
+      (async () => {
+        await queue.enqueue({ recipient: '50487373838', payload: { text: 'Prueba segura' }, idempotencyKey: 'test:delivery' });
+        const transient = new Error('Meta temporalmente no disponible'); transient.retryable = true;
+        await queue.processPending({ client: { sendMessage: async () => { throw transient; } } });
+        let row = (await runQuery('SELECT * FROM OutboundMessages'))[0];
+        if (row.status !== 'pending' || row.attempts !== 1 || row.last_error_code !== 'DELIVERY_FAILED') process.exitCode = 2;
+        await runExecute("UPDATE OutboundMessages SET next_attempt_at = datetime('now', '-1 minute')");
+        await queue.processPending({ client: { sendMessage: async () => ({ messages: [{ id: 'wamid.test' }] }) } });
+        row = (await runQuery('SELECT * FROM OutboundMessages'))[0];
+        if (row.status !== 'sent' || row.attempts !== 2 || row.provider_message_id !== 'wamid.test') process.exitCode = 3;
+        await closeDatabase();
+      })().catch((error) => { console.error(error); process.exit(1); });
+    `;
+    execFileSync(process.execPath, ['-e', script], { cwd: path.join(__dirname, '..'), env });
   });
 
   test('prevents two active reservations from occupying the same cabin and dates', async () => {
