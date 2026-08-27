@@ -2,6 +2,18 @@ const express = require('express');
 const router = express.Router();
 const { runQuery, runExecute } = require('../db');
 const bcrypt = require('bcryptjs');
+const { normalizeAdminRole, isValidAdminRole, ADMIN_ROLES } = require('../utils/adminRoles');
+
+function passwordIsStrong(password) {
+  return typeof password === 'string' && password.length >= 10 && /[A-Za-z]/.test(password) && /\d/.test(password);
+}
+
+async function activeSuperadminCount(excludeId = null) {
+  const rows = await runQuery(`SELECT COUNT(*) AS count FROM Admins
+    WHERE is_active = 1 AND lower(replace(role, '-', '_')) IN ('superadmin', 'super_admin')
+    ${excludeId == null ? '' : 'AND admin_id != ?'}`, excludeId == null ? [] : [excludeId]);
+  return Number(rows[0]?.count || 0);
+}
 
 // GET / - Obtener todos los administradores
 router.get('/', async (req, res) => {
@@ -31,6 +43,10 @@ router.get('/', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const { username, email, fullName, password, role = 'admin' } = req.body;
+    if (!isValidAdminRole(role)) {
+      return res.status(400).json({ success: false, message: 'Rol administrativo inválido' });
+    }
+    const normalizedRole = normalizeAdminRole(role);
     
     // Validaciones
     if (!username || !password || !email) {
@@ -54,10 +70,10 @@ router.post('/', async (req, res) => {
     }
     
     // Validar contraseña
-    if (password.length < 8) {
+    if (!passwordIsStrong(password)) {
       return res.status(400).json({
         success: false,
-        message: 'La contraseña debe tener al menos 8 caracteres'
+        message: 'La contraseña debe tener al menos 10 caracteres, letras y números'
       });
     }
     
@@ -67,9 +83,9 @@ router.post('/', async (req, res) => {
     
     // Insertar nuevo admin
     const result = await runExecute(`
-      INSERT INTO Admins (username, email, full_name, password_hash, role, is_active, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))
-    `, [username, email, fullName || username, hashedPassword, role]);
+      INSERT INTO Admins (username, email, full_name, password_hash, role, is_active, must_change_password, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, 1, 1, datetime('now'), datetime('now'))
+    `, [username, email, fullName || username, hashedPassword, normalizedRole]);
     
     if (result.lastID) {
       res.json({
@@ -80,7 +96,8 @@ router.post('/', async (req, res) => {
           username,
           email,
           fullName: fullName || username,
-          role
+          role: normalizedRole,
+          mustChangePassword: true
         }
       });
     } else {
@@ -115,10 +132,10 @@ router.put('/:id/password', async (req, res) => {
       });
     }
     
-    if (newPassword.length < 8) {
+    if (!passwordIsStrong(newPassword)) {
       return res.status(400).json({
         success: false,
-        message: 'La contraseña debe tener al menos 8 caracteres'
+        message: 'La contraseña debe tener al menos 10 caracteres, letras y números'
       });
     }
     
@@ -158,8 +175,8 @@ router.put('/:id/password', async (req, res) => {
     
     // Actualizar contraseña
     const result = await runExecute(
-      'UPDATE Admins SET password_hash = ?, updated_at = datetime("now") WHERE admin_id = ?',
-      [hashedPassword, id]
+      'UPDATE Admins SET password_hash = ?, must_change_password = ?, updated_at = datetime("now") WHERE admin_id = ?',
+      [hashedPassword, parseInt(id) === adminId ? 0 : 1, id]
     );
     
     if (result.changes > 0) {
@@ -188,6 +205,10 @@ router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const { username, email, fullName, role } = req.body;
+    if (!isValidAdminRole(role)) {
+      return res.status(400).json({ success: false, message: 'Rol administrativo inválido' });
+    }
+    const normalizedRole = normalizeAdminRole(role);
     
     // Validaciones
     if (!username || !email) {
@@ -210,12 +231,18 @@ router.put('/:id', async (req, res) => {
       });
     }
     
+    const currentRows = await runQuery('SELECT role FROM Admins WHERE admin_id = ?', [id]);
+    if (!currentRows.length) return res.status(404).json({ success: false, message: 'Administrador no encontrado' });
+    if (normalizeAdminRole(currentRows[0].role) === ADMIN_ROLES.SUPERADMIN && normalizedRole !== ADMIN_ROLES.SUPERADMIN && await activeSuperadminCount(Number(id)) === 0) {
+      return res.status(409).json({ success: false, message: 'No se puede degradar el último superadministrador activo' });
+    }
+
     // Actualizar datos
     const result = await runExecute(`
       UPDATE Admins 
       SET username = ?, email = ?, full_name = ?, role = ?, updated_at = datetime('now')
       WHERE admin_id = ?
-    `, [username, email, fullName || username, role || 'admin', id]);
+    `, [username, email, fullName || username, normalizedRole, id]);
     
     if (result.changes > 0) {
       res.json({
@@ -253,6 +280,12 @@ router.patch('/:id/toggle', async (req, res) => {
       });
     }
     
+    const targetRows = await runQuery('SELECT role FROM Admins WHERE admin_id = ?', [id]);
+    if (!targetRows.length) return res.status(404).json({ success: false, message: 'Administrador no encontrado' });
+    if (!isActive && normalizeAdminRole(targetRows[0].role) === ADMIN_ROLES.SUPERADMIN && await activeSuperadminCount(Number(id)) === 0) {
+      return res.status(409).json({ success: false, message: 'No se puede desactivar el último superadministrador activo' });
+    }
+
     const result = await runExecute(
       'UPDATE Admins SET is_active = ?, updated_at = datetime("now") WHERE admin_id = ?',
       [isActive ? 1 : 0, id]
@@ -293,6 +326,12 @@ router.delete('/:id', async (req, res) => {
       });
     }
     
+    const targetRows = await runQuery('SELECT role FROM Admins WHERE admin_id = ?', [id]);
+    if (!targetRows.length) return res.status(404).json({ success: false, message: 'Administrador no encontrado' });
+    if (normalizeAdminRole(targetRows[0].role) === ADMIN_ROLES.SUPERADMIN && await activeSuperadminCount(Number(id)) === 0) {
+      return res.status(409).json({ success: false, message: 'No se puede eliminar el último superadministrador activo' });
+    }
+
     // Verificar que no sea el último admin activo
     const activeAdmins = await runQuery(
       'SELECT COUNT(*) as count FROM Admins WHERE is_active = 1 AND admin_id != ?',

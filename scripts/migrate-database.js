@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS Users (
 CREATE TABLE IF NOT EXISTS Admins (
   admin_id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, email TEXT UNIQUE,
   full_name TEXT, password_hash TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'admin', is_active INTEGER NOT NULL DEFAULT 1,
+  must_change_password INTEGER NOT NULL DEFAULT 0,
   last_login TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS CabinTypes (
@@ -98,6 +99,19 @@ CREATE TABLE IF NOT EXISTS AppSettings (
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_by INTEGER
 );
+CREATE TABLE IF NOT EXISTS AdminAuditLogs (
+  audit_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  admin_id INTEGER,
+  username TEXT,
+  role TEXT,
+  method TEXT NOT NULL,
+  path TEXT NOT NULL,
+  status_code INTEGER NOT NULL,
+  ip_address TEXT,
+  user_agent TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (admin_id) REFERENCES Admins(admin_id)
+);
 INSERT OR IGNORE INTO AppSettings(setting_key, setting_value) VALUES ('payment_deposit_percentage', '50');
 INSERT OR IGNORE INTO AppSettings(setting_key, setting_value) VALUES ('payment_bank_accounts', '[]');
 INSERT OR IGNORE INTO AppSettings(setting_key, setting_value) VALUES ('payment_notes', '');
@@ -105,11 +119,13 @@ CREATE INDEX IF NOT EXISTS idx_reservations_dates ON Reservations(cabin_id, star
 CREATE INDEX IF NOT EXISTS idx_reservations_user ON Reservations(user_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_user_states_expires ON UserStates(expires_at);
 CREATE INDEX IF NOT EXISTS idx_activities_menu ON Activities(activo, incluir_en_menu, orden_menu);
+CREATE INDEX IF NOT EXISTS idx_admin_audit_created ON AdminAuditLogs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_admin_audit_admin ON AdminAuditLogs(admin_id, created_at DESC);
 INSERT OR IGNORE INTO SchemaMigrations(version) VALUES (1);
 `;
 
 const compatibilityColumns = {
-  Admins: ['last_login TEXT'],
+  Admins: ['last_login TEXT', 'must_change_password INTEGER NOT NULL DEFAULT 0'],
   Cabins: ['cabin_type_id INTEGER', 'base_price REAL DEFAULT 0', 'price_per_night REAL DEFAULT 0', 'price_per_additional_person REAL DEFAULT 0', 'is_active INTEGER DEFAULT 1'],
   Reservations: [
     'personas INTEGER DEFAULT 1', 'comprobante_nombre_archivo TEXT', 'grupoMessageId TEXT',
@@ -131,6 +147,7 @@ async function migrate() {
     }
   }
   await exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_reservations_confirmation_code ON Reservations(confirmation_code)');
+  await exec(`UPDATE Admins SET role = 'superadmin' WHERE lower(replace(role, '-', '_')) = 'super_admin'`);
   // Compatibilidad con solicitudes creadas por el flujo anterior de una sola aprobación.
   await exec(`UPDATE Reservations SET status = 'pendiente_verificacion'
     WHERE status = 'pendiente' AND comprobante_nombre_archivo IS NOT NULL`);

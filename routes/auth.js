@@ -1,7 +1,9 @@
 const express = require('express');
 const router = express.Router();
-const { generateToken, authenticateToken } = require('../middleware/auth');
-const { verifyAdminCredentials, getAdminById } = require('../services/authService');
+const { generateToken, authenticateToken, revokeToken } = require('../middleware/auth');
+const { verifyAdminCredentials, getAdminById, hashPassword } = require('../services/authService');
+const { runQuery, runExecute } = require('../db');
+const bcrypt = require('bcryptjs');
 const { validateLogin } = require('../middleware/validation');
 const { loginLimiter } = require('../middleware/security');
 const { 
@@ -149,7 +151,8 @@ router.post('/login',
           username: adminData.username,
           email: adminData.email,
           fullName: adminData.full_name,
-          role: 'admin'
+          role: adminData.role,
+          mustChangePassword: Boolean(adminData.must_change_password)
         },
         expiresIn: '24h'
       }
@@ -399,7 +402,8 @@ router.get('/me',
           fullName: adminData.full_name,
           lastLogin: adminData.last_login,
           createdAt: adminData.created_at,
-          role: 'admin'
+          role: adminData.role,
+          mustChangePassword: Boolean(adminData.must_change_password)
         }
       }
     });
@@ -414,6 +418,29 @@ router.get('/me',
       message: 'Error interno del servidor',
       error: 'INTERNAL_SERVER_ERROR'
     });
+  }
+});
+
+router.post('/change-password', authenticateToken, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body || {};
+    if (!currentPassword || typeof newPassword !== 'string' || newPassword.length < 10 || !/[A-Za-z]/.test(newPassword) || !/\d/.test(newPassword)) {
+      return res.status(400).json({
+        success: false,
+        message: 'La contraseña nueva debe tener al menos 10 caracteres, letras y números'
+      });
+    }
+    const rows = await runQuery('SELECT password_hash FROM Admins WHERE admin_id = ? AND is_active = 1', [req.user.adminId]);
+    if (!rows.length || !await bcrypt.compare(currentPassword, rows[0].password_hash)) {
+      return res.status(400).json({ success: false, message: 'La contraseña actual es incorrecta' });
+    }
+    await runExecute(`UPDATE Admins SET password_hash = ?, must_change_password = 0,
+      updated_at = datetime('now') WHERE admin_id = ?`, [await hashPassword(newPassword), req.user.adminId]);
+    revokeToken(req.authToken);
+    return res.json({ success: true, message: 'Contraseña actualizada. Inicia sesión nuevamente.' });
+  } catch (error) {
+    logger.error('Error cambiando contraseña propia', { adminId: req.user?.adminId, error: error.message });
+    return res.status(500).json({ success: false, message: 'No se pudo actualizar la contraseña' });
   }
 });
 

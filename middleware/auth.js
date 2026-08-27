@@ -6,6 +6,7 @@
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const logger = require('../config/logger');
+const { normalizeAdminRole } = require('../utils/adminRoles');
 
 // Clave secreta para JWT (OBLIGATORIO de variables de entorno)
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -30,7 +31,7 @@ class JWTSecurity {
     const payload = {
       adminId: adminData.admin_id,
       username: adminData.username,
-      role: adminData.role || 'admin',
+      role: normalizeAdminRole(adminData.role),
       iat: Math.floor(Date.now() / 1000),
       jti: this.generateJTI(),
       tokenVersion: 1 // Para invalidar todos los tokens de un usuario
@@ -222,8 +223,9 @@ function authorizeRole(...allowedRoles) {
       });
     }
 
-    const userRole = req.user.role || 'guest';
-    const hasPermission = allowedRoles.includes(userRole) || allowedRoles.includes('*');
+    const userRole = normalizeAdminRole(req.user.role, 'guest');
+    const normalizedAllowedRoles = allowedRoles.map((role) => role === '*' ? '*' : normalizeAdminRole(role, role));
+    const hasPermission = normalizedAllowedRoles.includes(userRole) || normalizedAllowedRoles.includes('*');
 
     if (!hasPermission) {
       logger.warn('Acceso denegado por permisos insuficientes', {
@@ -260,7 +262,7 @@ function generateToken(adminData) {
   const payload = {
     adminId: adminData.admin_id,
     username: adminData.username,
-    role: adminData.role || 'admin',
+    role: normalizeAdminRole(adminData.role),
     iat: Math.floor(Date.now() / 1000),
     jti: generateJTI() // JWT ID único para tracking
   };

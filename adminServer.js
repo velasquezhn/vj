@@ -21,6 +21,7 @@ const swaggerSpecs = require('./config/swagger');
 const usersRoutes = require('./routes/users');
 const { helmetConfig, generalLimiter, securityLogger, sanitizeInput, attackDetection } = require('./middleware/security');
 const { authenticateToken, authorizeRole } = require('./middleware/auth');
+const { adminAudit } = require('./middleware/adminAudit');
 const { advancedSecurityMiddleware, enhancedValidationHandler } = require('./middleware/advancedValidation');
 const { 
   validateUserCreation, 
@@ -133,6 +134,7 @@ app.use(securityLogger);
 // Limita el panel incluso detrás del proxy de producción. El login conserva
 // además su limitador específico, más estricto.
 app.use('/admin', generalLimiter);
+app.use('/admin', adminAudit);
 
 // ...existing code...
 
@@ -555,17 +557,19 @@ const adminUsersRoutes = require('./routes/adminUsers');
 const adminActivitiesRoutes = require('./routes/adminActivities');
 const adminWhatsAppAdminsRoutes = require('./routes/adminWhatsAppAdmins');
 const adminPaymentSettingsRoutes = require('./routes/adminPaymentSettings');
+const adminAuditLogsRoutes = require('./routes/adminAuditLogs');
 
 // Dashboard, Cabin Types, Activities y Admin Users routes (PROTEGIDAS)
 app.use('/admin/dashboard', authenticateToken, adminDashboardRoutes);
 app.use('/admin/cabin-types', authenticateToken, adminCabinTypesRoutes);
 app.use('/admin/activities', authenticateToken, adminActivitiesRoutes);
-app.use('/admin/whatsapp-admins', authenticateToken, adminWhatsAppAdminsRoutes);
-app.use('/admin/payment-settings', authenticateToken, adminPaymentSettingsRoutes);
-app.use('/admin/admin-users', authenticateToken, adminUsersRoutes);
+app.use('/admin/whatsapp-admins', authenticateToken, authorizeRole('superadmin'), adminWhatsAppAdminsRoutes);
+app.use('/admin/payment-settings', authenticateToken, authorizeRole('superadmin'), adminPaymentSettingsRoutes);
+app.use('/admin/admin-users', authenticateToken, authorizeRole('superadmin'), adminUsersRoutes);
+app.use('/admin/audit-logs', authenticateToken, authorizeRole('superadmin'), adminAuditLogsRoutes);
 
 // Conversation States routes (PROTEGIDAS)
-app.get('/admin/conversation-states', authenticateToken, async (req, res) => {
+app.get('/admin/conversation-states', authenticateToken, authorizeRole('superadmin'), async (req, res) => {
   try {
     const states = await conversationStatesService.getAllStates();
     res.json({
@@ -582,7 +586,7 @@ app.get('/admin/conversation-states', authenticateToken, async (req, res) => {
   }
 });
 
-app.post('/admin/conversation-states', authenticateToken, async (req, res) => {
+app.post('/admin/conversation-states', authenticateToken, authorizeRole('superadmin'), async (req, res) => {
   try {
     const success = await conversationStatesService.createState(req.body);
     res.json({ 
@@ -599,7 +603,7 @@ app.post('/admin/conversation-states', authenticateToken, async (req, res) => {
   }
 });
 
-app.put('/admin/conversation-states/:id', authenticateToken, validateId, async (req, res) => {
+app.put('/admin/conversation-states/:id', authenticateToken, authorizeRole('superadmin'), validateId, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const success = await conversationStatesService.updateState(id, req.body);
@@ -617,7 +621,7 @@ app.put('/admin/conversation-states/:id', authenticateToken, validateId, async (
   }
 });
 
-app.delete('/admin/conversation-states/:id', authenticateToken, validateId, async (req, res) => {
+app.delete('/admin/conversation-states/:id', authenticateToken, authorizeRole('superadmin'), validateId, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const success = await conversationStatesService.deleteState(id);
@@ -804,7 +808,7 @@ app.get('/admin/calendar-occupancy', authenticateToken, validateDateQuery, async
  */
 
 // GET /admin/backup/status - Estado del servicio de backup
-app.get('/admin/backup/status', authenticateToken, async (req, res) => {
+app.get('/admin/backup/status', authenticateToken, authorizeRole('superadmin'), async (req, res) => {
   try {
     const stats = backupService.getStats();
     res.json({
@@ -859,7 +863,7 @@ app.get('/admin/backup/status', authenticateToken, async (req, res) => {
  *       - bearerAuth: []
  */
 // GET /admin/backup/list - Listar backups disponibles
-app.get('/admin/backup/list', authenticateToken, async (req, res) => {
+app.get('/admin/backup/list', authenticateToken, authorizeRole('superadmin'), async (req, res) => {
   try {
     const backups = backupService.listBackups();
     res.json({
@@ -913,7 +917,7 @@ app.get('/admin/backup/list', authenticateToken, async (req, res) => {
  *       - bearerAuth: []
  */
 // POST /admin/backup/create - Crear backup manual
-app.post('/admin/backup/create', authenticateToken, async (req, res) => {
+app.post('/admin/backup/create', authenticateToken, authorizeRole('superadmin'), async (req, res) => {
   try {
     console.log('[BACKUP] Backup manual solicitado por admin');
     const success = await backupService.createBackup();
@@ -988,7 +992,7 @@ app.post('/admin/backup/create', authenticateToken, async (req, res) => {
  *       - bearerAuth: []
  */
 // POST /admin/backup/restore - Restaurar backup
-app.post('/admin/backup/restore', authenticateToken, async (req, res) => {
+app.post('/admin/backup/restore', authenticateToken, authorizeRole('superadmin'), async (req, res) => {
   res.status(409).json({
     success: false,
     error: 'OFFLINE_RESTORE_REQUIRED',
