@@ -194,6 +194,14 @@ async function migrate() {
   }
   await exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_reservations_confirmation_code ON Reservations(confirmation_code)');
   await exec(`UPDATE Admins SET role = 'superadmin' WHERE lower(replace(role, '-', '_')) = 'super_admin'`);
+  // El panel nunca debe quedar sin un superadministrador activo. En instalaciones
+  // antiguas se promueve únicamente la cuenta activa más antigua.
+  await exec(`UPDATE Admins SET role = 'superadmin', updated_at = CURRENT_TIMESTAMP
+    WHERE admin_id = (SELECT admin_id FROM Admins WHERE is_active = 1 ORDER BY admin_id LIMIT 1)
+      AND NOT EXISTS (
+        SELECT 1 FROM Admins WHERE is_active = 1
+          AND lower(replace(role, '-', '_')) IN ('superadmin', 'super_admin')
+      )`);
   // Compatibilidad con solicitudes creadas por el flujo anterior de una sola aprobación.
   await exec(`UPDATE Reservations SET status = 'pendiente_verificacion'
     WHERE status = 'pendiente' AND comprobante_nombre_archivo IS NOT NULL`);

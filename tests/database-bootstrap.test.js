@@ -81,6 +81,16 @@ describe('database bootstrap', () => {
     expect(admins.some((admin) => ['92083526', '50492083526'].includes(admin.phone_number))).toBe(false);
   });
 
+  test('preserves at least one active superadministrator on legacy databases', async () => {
+    const env = { ...process.env, DB_PATH: dbPath, NODE_ENV: 'test' };
+    execFileSync(process.execPath, ['scripts/migrate-database.js'], { cwd: path.join(__dirname, '..'), env });
+    await execute(dbPath, `INSERT INTO Admins(username,email,password_hash,role,is_active)
+      VALUES('admin','velasquezhn93@gmail.com','hash-de-prueba','admin',1)`);
+    execFileSync(process.execPath, ['scripts/migrate-database.js'], { cwd: path.join(__dirname, '..'), env });
+    const admins = await query(dbPath, "SELECT username, email, role FROM Admins WHERE username = 'admin'");
+    expect(admins[0]).toEqual({ username: 'admin', email: 'velasquezhn93@gmail.com', role: 'superadmin' });
+  });
+
   test('persists failed outbound messages and retries them successfully', async () => {
     const env = { ...process.env, DB_PATH: dbPath, NODE_ENV: 'test' };
     execFileSync(process.execPath, ['scripts/migrate-database.js'], { cwd: path.join(__dirname, '..'), env });
