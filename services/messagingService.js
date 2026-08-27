@@ -3,8 +3,8 @@ const constants = require('../controllers/constants');
 const { establecerEstado } = require('./stateService');
 const { loadMenuCabinTypes } = require('./menuCabinTypesService');
 const { loadMenuActivities } = require('./menuActivitiesService');
-const { isValidUrl } = require('../utils/utils');
 const { sendReplyButtons, sendList } = require('./whatsappInteractiveService');
+const { buildCabinDetails, cabinMedia } = require('./whatsappCabinPresentationService');
 
 async function enviarMenuPrincipal(bot, remitente) {
     try {
@@ -120,36 +120,40 @@ async function enviarDetalleCabaña(bot, remitente, seleccion) {
         await establecerEstado(remitente, 'DETALLE_CABAÑA', { seleccion: seleccionNum });
         
         const nombre = tipo.nombre || 'Cabaña sin nombre';
-        const tipoDesc = tipo.tipo || 'Tipo no especificado';
-        const descripcion = tipo.descripcion || 'Descripción no disponible';
-        const precio = tipo.precio_noche ? `HNL ${tipo.precio_noche.toLocaleString()}` : 'Precio no disponible';
-        
-        const detalles = `🏖️ *${nombre}*\n\n` +
-            `👥 Capacidad: ${tipo.capacidad} personas\n` +
-            `🛏️ Habitaciones: ${tipo.habitaciones} | 🚿 Baños: ${tipo.baños}\n` +
-            `💰 Precio por noche: ${precio}\n\n` +
-            `${descripcion}`;
+        const detalles = buildCabinDetails(tipo);
         
         try {
-            const fotos = Array.isArray(tipo.fotos) ? tipo.fotos : (tipo.fotos ? JSON.parse(tipo.fotos) : []);
-            const urlsValidas = fotos.filter(url => isValidUrl(url));
-
-            const imageUrls = urlsValidas.filter(url => /\.(jpg|jpeg|png|gif|webp)$/i.test(url));
-            const videoUrls = urlsValidas.filter(url => /\.(mp4|mov|avi|mkv)$/i.test(url));
+            const { images: imageUrls, videos: videoUrls } = cabinMedia(tipo);
 
             if (imageUrls.length > 0) {
-                await bot.sendMessage(remitente, {
-                    image: { url: imageUrls[0] },
-                    caption: detalles
-                });
-                
-                for (let i = 1; i < imageUrls.length; i++) {
+                try {
                     await bot.sendMessage(remitente, {
-                        image: { url: imageUrls[i] }
+                        image: { url: imageUrls[0] },
+                        caption: detalles
                     });
+                } catch (coverError) {
+                    logger.warn('No se pudo enviar la portada de la cabaña; se conserva la información en texto', {
+                        cabin: tipo.type_key, code: coverError.response?.data?.error?.code
+                    });
+                    await bot.sendMessage(remitente, { text: detalles });
+                }
+
+                for (let i = 1; i < imageUrls.length; i++) {
+                    try {
+                        await bot.sendMessage(remitente, {
+                            image: { url: imageUrls[i] },
+                            caption: `📷 ${nombre} · Foto ${i + 1} de ${imageUrls.length}`
+                        });
+                    } catch (imageError) {
+                        logger.warn('Una foto de la galería no pudo enviarse', {
+                            cabin: tipo.type_key, position: i + 1,
+                            code: imageError.response?.data?.error?.code
+                        });
+                    }
                 }
             } else {
                 await bot.sendMessage(remitente, { text: detalles });
+                logger.warn('El tipo de cabaña no tiene fotografías HTTPS configuradas', { cabin: tipo.type_key });
             }
 
             for (const videoUrl of videoUrls) {

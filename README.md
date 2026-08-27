@@ -45,6 +45,7 @@ Copie `.env.example`; nunca versione `.env` ni credenciales.
 - `META_APP_SECRET`: secreto para validar `X-Hub-Signature-256`.
 - `WHATSAPP_ADMIN_NUMBERS`: respaldo opcional para números autorizados, separados por coma y con código de país. La lista normal se administra desde **Configuración > Administradores de WhatsApp** en el panel.
 - `PUBLIC_BASE_URL`: URL HTTPS pública del backend, usada para abrir comprobantes desde los avisos administrativos.
+- `WHATSAPP_CABIN_GALLERY_LIMIT`: máximo de fotografías enviadas al mostrar una cabaña (1 a 5; recomendado y predeterminado: 4).
 - `OPENWEATHER_API_KEY`: opcional; habilita el pronóstico del menú sin guardar la clave en el código.
 
 ## Configuración de Meta
@@ -64,6 +65,8 @@ El webhook procesa texto, botones, listas, imágenes, documentos y estados. Los 
 El menú principal, los alojamientos y las experiencias usan listas interactivas oficiales de Meta. La confirmación de fechas, la aceptación de condiciones y las acciones posteriores usan botones de respuesta. Los identificadores de botones se convierten a comandos internos estables, por lo que las respuestas numéricas escritas siguen siendo compatibles. Si Meta no acepta temporalmente un mensaje interactivo, el bot envía automáticamente una alternativa en texto.
 
 Los mensajes interactivos solo pueden enviarse dentro de la ventana de atención iniciada por el huésped. Para iniciar conversaciones fuera de esa ventana se debe crear y aprobar una plantilla en WhatsApp Manager; las plantillas no se usan para navegar los menús.
+
+Las galerías de Tortuga, Delfín y Tiburón se administran en **Tipos de Menú**. Use una URL pública HTTPS por línea en formato JPG, PNG o WEBP. El bot envía una portada con el resumen y hasta cuatro fotos; si una imagen falla, continúa con las demás y conserva la información en texto.
 
 ### Aprobación de reservas
 

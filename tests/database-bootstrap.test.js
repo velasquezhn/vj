@@ -43,6 +43,8 @@ describe('database bootstrap', () => {
     expect(counts[0].activities).toBeGreaterThan(0);
     const duplicateNames = await query(dbPath, 'SELECT name FROM Cabins GROUP BY name HAVING COUNT(*) > 1');
     expect(duplicateNames).toHaveLength(0);
+    const cabinTypesWithPhotos = await query(dbPath, "SELECT type_key FROM CabinTypes WHERE fotos IS NOT NULL AND fotos != '[]'");
+    expect(cabinTypesWithPhotos).toHaveLength(3);
     const adminTable = await query(dbPath, "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'WhatsAppAdmins'");
     expect(adminTable).toHaveLength(1);
   });

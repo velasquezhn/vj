@@ -24,12 +24,28 @@ async function seed() {
         JSON.stringify(type.gallery || []), JSON.stringify(type.amenities || []), type.description?.full || '', index + 1
       ]);
       const cabinType = await get('SELECT cabin_type_id FROM CabinTypes WHERE type_key = ?', [type.id]);
+      // Completa campos que quedaron vacíos en instalaciones anteriores sin sobrescribir
+      // cambios válidos realizados desde el panel administrativo.
+      await run(`UPDATE CabinTypes SET
+        fotos = CASE WHEN fotos IS NULL OR TRIM(fotos) = '' OR TRIM(fotos) = '[]' THEN ? ELSE fotos END,
+        comodidades = CASE WHEN comodidades IS NULL OR TRIM(comodidades) = '' OR TRIM(comodidades) = '[]' THEN ? ELSE comodidades END,
+        descripcion = CASE WHEN descripcion IS NULL OR TRIM(descripcion) = '' THEN ? ELSE descripcion END,
+        updated_at = CURRENT_TIMESTAMP
+        WHERE cabin_type_id = ?`, [
+        JSON.stringify(type.gallery || []), JSON.stringify(type.amenities || []),
+        type.description?.full || type.description?.short || '', cabinType.cabin_type_id
+      ]);
       for (const unitName of type.physical_units?.unit_names || []) {
         await run(`INSERT INTO Cabins (cabin_type_id, name, capacity, description, price, base_price, price_per_night, photos)
           SELECT ?, ?, ?, ?, ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM Cabins WHERE name = ?)`, [
           cabinType.cabin_type_id, unitName, type.capacity.max_guests, type.description?.short || '',
           type.pricing.base_price, type.pricing.base_price, type.pricing.base_price, (type.gallery || []).join(','), unitName
         ]);
+        await run(`UPDATE Cabins SET
+          photos = CASE WHEN photos IS NULL OR TRIM(photos) = '' THEN ? ELSE photos END,
+          description = CASE WHEN description IS NULL OR TRIM(description) = '' THEN ? ELSE description END,
+          updated_at = CURRENT_TIMESTAMP
+          WHERE name = ?`, [(type.gallery || []).join(','), type.description?.short || '', unitName]);
       }
     }
     for (const [index, activity] of activities.entries()) {

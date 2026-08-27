@@ -1,7 +1,7 @@
 {
   "metadata": {
     "version": "2.0",
-    "last_updated": "2025-08-02T00:00:00Z",
+    "last_updated": "2026-08-26T00:00:00Z",
     "total_physical_units": 13,
     "data_source": "official",
     "validation_status": "verified"
@@ -129,6 +129,16 @@
         "total": 2,
         "unit_names": ["Cabaña Delfín 1", "Cabaña Delfín 2"]
       },
+      "gallery": [
+        "https://res.cloudinary.com/dpajxjfyj/image/upload/v1751931157/WhatsApp_Image_2025-07-07_at_12.24.40_PM_2_yfxzze.jpg",
+        "https://res.cloudinary.com/dpajxjfyj/image/upload/v1751931158/WhatsApp_Image_2025-07-07_at_12.24.41_PM_1_rgrpaf.jpg",
+        "https://res.cloudinary.com/dpajxjfyj/image/upload/v1751931157/WhatsApp_Image_2025-07-07_at_12.24.41_PM_ok5spo.jpg",
+        "https://res.cloudinary.com/dpajxjfyj/image/upload/v1751931156/WhatsApp_Image_2025-07-07_at_12.24.40_PM_1_d1grbl.jpg"
+      ],
+      "description": {
+        "short": "Cabaña amplia de 2 habitaciones y 2 baños para hasta 6 personas.",
+        "full": "Cabaña familiar con dos habitaciones climatizadas, dos baños, cocina completa, sala con TV, WiFi y dos espacios de estacionamiento. Incluye acceso a la piscina y al área social compartida."
+      },
       "policies": {
         "check_in": "14:00",
         "check_out": "11:00",
@@ -204,6 +214,16 @@
           "Cabaña Tiburón 1", "Cabaña Tiburón 2", "Cabaña Tiburón 3", "Cabaña Tiburón 4",
           "Cabaña Tiburón 5", "Cabaña Tiburón 6", "Cabaña Tiburón 7", "Cabaña Tiburón 8"
         ]
+      },
+      "gallery": [
+        "https://res.cloudinary.com/dpajxjfyj/image/upload/v1751927030/cab2_11_pfog3z.jpg",
+        "https://res.cloudinary.com/dpajxjfyj/image/upload/v1751927030/cab2_4_dyt1oo.jpg",
+        "https://res.cloudinary.com/dpajxjfyj/image/upload/v1751927030/cab2_3_tvwtpn.jpg",
+        "https://res.cloudinary.com/dpajxjfyj/image/upload/v1751927029/cab2_2_upds85.jpg"
+      ],
+      "description": {
+        "short": "Cabaña grande de 3 habitaciones y 2 baños para hasta 9 personas.",
+        "full": "Cabaña para grupos y familias con tres habitaciones climatizadas, dos baños, cocina completa, sala con TV, WiFi y dos espacios de estacionamiento. Incluye acceso a la piscina y al área social compartida."
       },
       "policies": {
         "check_in": "14:00",

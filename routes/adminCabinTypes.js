@@ -7,6 +7,17 @@ const {
   updateCabinType,
   createCabinType 
 } = require('../services/menuCabinTypesService');
+const { parseMediaList, mediaType } = require('../services/whatsappCabinPresentationService');
+
+function validatePhotos(fotos) {
+  if (fotos === undefined) return null;
+  if (!Array.isArray(fotos)) return 'Las fotos deben enviarse como una lista';
+  const valid = parseMediaList(fotos);
+  if (valid.length !== fotos.length || valid.some((url) => mediaType(url) !== 'image')) {
+    return 'Todas las fotos deben ser URLs HTTPS válidas con formato JPG, PNG o WEBP';
+  }
+  return null;
+}
 
 // GET / - Obtener todos los tipos de menú
 router.get('/', async (req, res) => {
@@ -24,6 +35,26 @@ router.get('/', async (req, res) => {
       message: 'Error al obtener tipos de cabañas',
       error: error.message
     });
+  }
+});
+
+// Debe declararse antes de /:typeKey para que Express no interprete "preview" como una clave.
+router.get('/preview/menu', async (_req, res) => {
+  try {
+    const types = await loadMenuCabinTypes();
+    const menuPreview = types.map((type, index) => ({
+      option: index + 1,
+      text: `${index + 1}. ${type.nombre}`,
+      details: {
+        capacidad: `${type.capacidad} personas`, habitaciones: type.habitaciones,
+        baños: type.baños, precio: `${type.moneda} ${type.precio_noche}`,
+        fotos: type.fotos?.length || 0
+      }
+    }));
+    res.json({ success: true, menu: menuPreview, totalOptions: menuPreview.length, generatedAt: new Date().toISOString() });
+  } catch (error) {
+    console.error('Error generating menu preview:', error);
+    res.status(500).json({ success: false, message: 'Error al generar vista previa del menú' });
   }
 });
 
@@ -74,6 +105,8 @@ router.put('/:typeKey', async (req, res) => {
         message: 'El precio debe ser mayor o igual a 0'
       });
     }
+    const photoError = validatePhotos(updateData.fotos);
+    if (photoError) return res.status(400).json({ success: false, message: photoError });
     
     const success = await updateCabinType(typeKey, updateData);
     
@@ -164,6 +197,8 @@ router.post('/', async (req, res) => {
         message: 'El precio debe ser mayor o igual a 0'
       });
     }
+    const photoError = validatePhotos(typeData.fotos);
+    if (photoError) return res.status(400).json({ success: false, message: photoError });
     
     const success = await createCabinType(typeData);
     
@@ -183,39 +218,6 @@ router.post('/', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error al crear tipo de cabaña',
-      error: error.message
-    });
-  }
-});
-
-// GET /preview/menu - Vista previa del menú
-router.get('/preview/menu', async (req, res) => {
-  try {
-    const types = await loadMenuCabinTypes();
-    
-    const menuPreview = types.map((type, index) => ({
-      option: index + 1,
-      text: `${index + 1}. ${type.nombre}`,
-      details: {
-        capacidad: `${type.capacidad} personas`,
-        habitaciones: type.habitaciones,
-        baños: type.baños,
-        precio: `${type.moneda} ${type.precio_noche}`,
-        fotos: type.fotos?.length || 0
-      }
-    }));
-    
-    res.json({
-      success: true,
-      menu: menuPreview,
-      totalOptions: menuPreview.length,
-      generatedAt: new Date().toISOString()
-    });
-  } catch (error) {
-    console.error('Error generating menu preview:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error al generar vista previa del menú',
       error: error.message
     });
   }
