@@ -252,39 +252,14 @@ router.post('/verify',
       });
     }
     
-    const jwt = require('jsonwebtoken');
-    const { JWT_SECRET } = require('../middleware/auth');
-    
-    jwt.verify(token, JWT_SECRET, (err, user) => {
-      if (err) {
-        logger.warn('Token inválido rechazado', { 
-          ip: req.ip, 
-          error: err.message 
-        });
-        
-        return res.status(403).json({
-          success: false,
-          message: 'Token inválido o expirado',
-          error: 'INVALID_TOKEN'
-        });
+    logger.info('Token verificado exitosamente', { username: req.user.username, ip: req.ip });
+    return res.json({
+      success: true,
+      message: 'Token válido',
+      data: {
+        user: { username: req.user.username, role: req.user.role },
+        iat: req.user.iat
       }
-      
-      logger.info('Token verificado exitosamente', { 
-        username: user.username,
-        ip: req.ip
-      });
-      
-      res.json({
-        success: true,
-        message: 'Token válido',
-        data: {
-          user: {
-            username: user.username,
-            role: user.role
-          },
-          iat: user.iat
-        }
-      });
     });
     
   } catch (error) {
