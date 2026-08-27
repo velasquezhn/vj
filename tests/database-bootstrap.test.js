@@ -45,6 +45,8 @@ describe('database bootstrap', () => {
     expect(duplicateNames).toHaveLength(0);
     const cabinTypesWithPhotos = await query(dbPath, "SELECT type_key FROM CabinTypes WHERE fotos IS NOT NULL AND fotos != '[]'");
     expect(cabinTypesWithPhotos).toHaveLength(3);
+    const activeCabinTypes = await query(dbPath, 'SELECT type_key FROM CabinTypes WHERE activo = 1');
+    expect(activeCabinTypes).toHaveLength(3);
     const adminTable = await query(dbPath, "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'WhatsAppAdmins'");
     expect(adminTable).toHaveLength(1);
   });

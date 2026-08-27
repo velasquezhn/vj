@@ -27,7 +27,8 @@ const loadMenuCabinTypes = async () => {
         comodidades,
         ubicacion,
         descripcion,
-        orden
+        orden,
+        activo
       FROM CabinTypes 
       WHERE activo = true 
       ORDER BY orden ASC
@@ -47,9 +48,10 @@ const loadMenuCabinTypes = async () => {
       baños: type.baños,
       precio_noche: type.precio_noche,
       moneda: type.moneda,
-      fotos: type.fotos ? JSON.parse(type.fotos) : [],
-      comodidades: type.comodidades ? JSON.parse(type.comodidades) : [],
-      ubicacion: type.ubicacion ? JSON.parse(type.ubicacion) : {},
+      fotos: safeJson(type.fotos, []),
+      comodidades: safeJson(type.comodidades, []),
+      ubicacion: safeJson(type.ubicacion, {}),
+      activo: Boolean(type.activo),
       descripcion: type.descripcion,
       reservas: [] // Siempre vacío para tipos de menú
     }));
@@ -65,6 +67,11 @@ const loadMenuCabinTypes = async () => {
   }
 };
 
+function safeJson(value, fallback) {
+  try { return value ? JSON.parse(value) : fallback; }
+  catch { return fallback; }
+}
+
 // Obtener un tipo específico por clave
 const getCabinTypeByKey = async (typeKey) => {
   try {
@@ -77,9 +84,10 @@ const getCabinTypeByKey = async (typeKey) => {
       const typeData = type[0];
       return {
         ...typeData,
-        fotos: typeData.fotos ? JSON.parse(typeData.fotos) : [],
-        comodidades: typeData.comodidades ? JSON.parse(typeData.comodidades) : [],
-        ubicacion: typeData.ubicacion ? JSON.parse(typeData.ubicacion) : {}
+        fotos: safeJson(typeData.fotos, []),
+        comodidades: safeJson(typeData.comodidades, []),
+        ubicacion: safeJson(typeData.ubicacion, {}),
+        activo: Boolean(typeData.activo)
       };
     }
     return null;
@@ -92,11 +100,11 @@ const getCabinTypeByKey = async (typeKey) => {
 // Activar/desactivar un tipo de cabaña
 const toggleCabinType = async (typeKey, activo) => {
   try {
-    await db.runQuery(
+    const result = await db.runExecute(
       'UPDATE CabinTypes SET activo = ?, updated_at = CURRENT_TIMESTAMP WHERE type_key = ?',
       [activo, typeKey]
     );
-    return true;
+    return result.changes > 0;
   } catch (e) {
     console.error('Error toggling cabin type:', e);
     return false;
@@ -141,9 +149,7 @@ const updateCabinType = async (typeKey, updateData) => {
     values.push(typeKey);
     
     const sql = `UPDATE CabinTypes SET ${fields.join(', ')} WHERE type_key = ?`;
-    await db.runQuery(sql, values);
-    
-    return true;
+    return (await db.runExecute(sql, values)).changes > 0;
   } catch (e) {
     console.error('Error updating cabin type:', e);
     return false;
@@ -178,8 +184,7 @@ const createCabinType = async (typeData) => {
       typeData.activo !== false // por defecto true
     ];
     
-    await db.runQuery(sql, params);
-    return true;
+    return (await db.runExecute(sql, params)).changes > 0;
   } catch (e) {
     console.error('Error creating cabin type:', e);
     return false;
