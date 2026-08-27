@@ -5,6 +5,7 @@ const { loadMenuCabinTypes } = require('./menuCabinTypesService');
 const { loadMenuActivities } = require('./menuActivitiesService');
 const { sendReplyButtons, sendList } = require('./whatsappInteractiveService');
 const { buildCabinDetails, cabinMedia } = require('./whatsappCabinPresentationService');
+const { buildCabinGalleryUrl } = require('./whatsappCabinGalleryService');
 
 async function enviarMenuPrincipal(bot, remitente) {
     try {
@@ -125,36 +126,22 @@ async function enviarDetalleCabaña(bot, remitente, seleccion) {
         try {
             const { images: imageUrls, videos: videoUrls } = cabinMedia(tipo);
 
-            if (imageUrls.length > 0) {
-                try {
-                    await bot.sendMessage(remitente, {
-                        image: { url: imageUrls[0] },
-                        caption: detalles
-                    });
-                } catch (coverError) {
-                    logger.warn('No se pudo enviar la portada de la cabaña; se conserva la información en texto', {
-                        cabin: tipo.type_key, code: coverError.response?.data?.error?.code
-                    });
-                    await bot.sendMessage(remitente, { text: detalles });
-                }
+            const galleryUrl = imageUrls.length > 0
+                ? await buildCabinGalleryUrl(tipo, imageUrls)
+                : null;
+            if (!galleryUrl) logger.warn('El tipo de cabaña no tiene fotografías HTTPS configuradas', { cabin: tipo.type_key });
 
-                for (let i = 1; i < imageUrls.length; i++) {
-                    try {
-                        await bot.sendMessage(remitente, {
-                            image: { url: imageUrls[i] },
-                            caption: `📷 ${nombre} · Foto ${i + 1} de ${imageUrls.length}`
-                        });
-                    } catch (imageError) {
-                        logger.warn('Una foto de la galería no pudo enviarse', {
-                            cabin: tipo.type_key, position: i + 1,
-                            code: imageError.response?.data?.error?.code
-                        });
-                    }
-                }
-            } else {
-                await bot.sendMessage(remitente, { text: detalles });
-                logger.warn('El tipo de cabaña no tiene fotografías HTTPS configuradas', { cabin: tipo.type_key });
-            }
+            await sendReplyButtons(bot, remitente, {
+                body: detalles,
+                ...(galleryUrl ? { headerImage: { url: galleryUrl } } : {}),
+                footer: 'Villas Julie',
+                buttons: [
+                    { id: 'detail_back', title: 'Ver alojamientos' },
+                    { id: 'detail_reserve', title: 'Reservar' },
+                    { id: 'detail_menu', title: 'Menú principal' }
+                ],
+                fallbackText: `${detalles}\n\n${constants.SELECCION_DETALLE_OPCIONES}`
+            });
 
             for (const videoUrl of videoUrls) {
                 try {
@@ -168,17 +155,6 @@ async function enviarDetalleCabaña(bot, remitente, seleccion) {
                 }
             }
             
-            await sendReplyButtons(bot, remitente, {
-                body: '¿Qué deseas hacer ahora?',
-                footer: 'Villas Julie',
-                buttons: [
-                    { id: 'detail_back', title: 'Ver alojamientos' },
-                    { id: 'detail_reserve', title: 'Reservar' },
-                    { id: 'detail_menu', title: 'Menú principal' }
-                ],
-                fallbackText: constants.SELECCION_DETALLE_OPCIONES
-            });
-            
             logger.info(`Detalles de cabaña enviados a ${remitente}: ${nombre}`);
             
         } catch (mediaError) {
@@ -187,15 +163,14 @@ async function enviarDetalleCabaña(bot, remitente, seleccion) {
                 userId: remitente
             });
             
-            await bot.sendMessage(remitente, { text: detalles });
             await sendReplyButtons(bot, remitente, {
-                body: '¿Qué deseas hacer ahora?',
+                body: detalles,
                 buttons: [
                     { id: 'detail_back', title: 'Ver alojamientos' },
                     { id: 'detail_reserve', title: 'Reservar' },
                     { id: 'detail_menu', title: 'Menú principal' }
                 ],
-                fallbackText: constants.SELECCION_DETALLE_OPCIONES
+                fallbackText: `${detalles}\n\n${constants.SELECCION_DETALLE_OPCIONES}`
             });
         }
         

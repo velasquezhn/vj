@@ -92,6 +92,15 @@ CREATE TABLE IF NOT EXISTS WhatsAppAdmins (
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+CREATE TABLE IF NOT EXISTS AppSettings (
+  setting_key TEXT PRIMARY KEY,
+  setting_value TEXT NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_by INTEGER
+);
+INSERT OR IGNORE INTO AppSettings(setting_key, setting_value) VALUES ('payment_deposit_percentage', '50');
+INSERT OR IGNORE INTO AppSettings(setting_key, setting_value) VALUES ('payment_bank_accounts', '[]');
+INSERT OR IGNORE INTO AppSettings(setting_key, setting_value) VALUES ('payment_notes', '');
 CREATE INDEX IF NOT EXISTS idx_reservations_dates ON Reservations(cabin_id, start_date, end_date, status);
 CREATE INDEX IF NOT EXISTS idx_reservations_user ON Reservations(user_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_user_states_expires ON UserStates(expires_at);

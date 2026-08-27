@@ -5,6 +5,7 @@ const { authorizePayment, approveReservation, rejectReservation, getReservationF
 const { obtenerEstado, establecerEstado } = require('./stateService');
 const { activeAdminNumbers } = require('./whatsappAdminSettingsService');
 const { runQuery } = require('../db');
+const { getPaymentSettings, paymentAmounts } = require('./paymentSettingsService');
 
 async function getAdminNumbers() {
   const configured = await activeAdminNumbers();
@@ -37,8 +38,9 @@ function receiptUrl(reservation) {
   return base ? `${base}${reservation.comprobante_nombre_archivo}` : reservation.comprobante_nombre_archivo;
 }
 
-function reviewText(reservation) {
+function reviewText(reservation, payment = { deposit_percentage: 50, bank_accounts: [] }) {
   const receipt = receiptUrl(reservation);
+  const amounts = paymentAmounts(reservation.total_price, payment.deposit_percentage);
   const stage = reservation.status === 'pendiente_autorizacion'
     ? 'AUTORIZACIÓN PREVIA AL PAGO'
     : 'VERIFICACIÓN DEL COMPROBANTE';
@@ -50,21 +52,27 @@ function reviewText(reservation) {
     `Fechas: *${reservation.start_date} al ${reservation.end_date}*\n` +
     `Personas: *${reservation.personas}*\n` +
     `Total: *HNL ${Number(reservation.total_price).toLocaleString('es-HN')}*\n` +
+    (reservation.status === 'pendiente_autorizacion'
+      ? `Anticipo (${payment.deposit_percentage}%): *HNL ${amounts.deposit.toLocaleString('es-HN', { minimumFractionDigits: 2 })}*\n` +
+        (!payment.bank_accounts.length ? '⚠️ Configura las cuentas bancarias en el panel antes de autorizar.\n' : '')
+      : '') +
     (receipt ? `Comprobante: ${receipt}` : 'Comprobante: aún no permitido');
 }
 
 async function sendReview(bot, to, reservation) {
   const preapproval = reservation.status === 'pendiente_autorizacion';
+  const payment = await getPaymentSettings();
+  const body = reviewText(reservation, payment);
   return sendReplyButtons(bot, to, {
     header: 'Revisión administrativa',
-    body: reviewText(reservation),
+    body,
     footer: 'Solo administradores autorizados',
     buttons: [
       { id: `${preapproval ? 'admin_authorize' : 'admin_approve'}_${reservation.reservation_id}`, title: preapproval ? 'Autorizar pago' : 'Confirmar' },
       { id: `admin_reject_${reservation.reservation_id}`, title: 'Rechazar' },
       { id: `admin_details_${reservation.reservation_id}`, title: 'Ver detalles' }
     ],
-    fallbackText: `${reviewText(reservation)}\n\n/aprobar ${reservation.confirmation_code}\n/rechazar ${reservation.confirmation_code} MOTIVO`
+    fallbackText: `${body}\n\n/aprobar ${reservation.confirmation_code}\n/rechazar ${reservation.confirmation_code} MOTIVO`
   });
 }
 

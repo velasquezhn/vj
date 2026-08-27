@@ -25,7 +25,7 @@ describe('database bootstrap', () => {
     execFileSync(process.execPath, ['scripts/migrate-database.js'], { cwd: path.join(__dirname, '..'), env });
     execFileSync(process.execPath, ['scripts/migrate-database.js'], { cwd: path.join(__dirname, '..'), env });
     const tables = await query(dbPath, "SELECT name FROM sqlite_master WHERE type='table'");
-    expect(tables.map((row) => row.name)).toEqual(expect.arrayContaining(['Admins', 'Reservations', 'UserStates', 'WhatsAppEvents']));
+    expect(tables.map((row) => row.name)).toEqual(expect.arrayContaining(['Admins', 'Reservations', 'UserStates', 'WhatsAppEvents', 'AppSettings']));
     const columns = await query(dbPath, 'PRAGMA table_info(Reservations)');
     expect(columns.map((row) => row.name)).toEqual(expect.arrayContaining([
       'personas', 'comprobante_nombre_archivo', 'confirmation_code', 'receipt_received_at',
@@ -133,12 +133,25 @@ describe('database bootstrap', () => {
     expect((await query(dbPath, 'SELECT status, comprobante_nombre_archivo FROM Reservations WHERE reservation_id = 1'))[0])
       .toEqual({ status: 'pendiente_autorizacion', comprobante_nombre_archivo: null });
 
+    const blockedAuthorizationScript = `
+      const { authorizePayment } = require('./services/reservationApprovalService');
+      const { closeDatabase } = require('./db');
+      (async () => {
+        const result = await authorizePayment(1, 99, { notify: async () => ({ ok: true }) });
+        if (result.ok || result.code !== 'PAYMENT_SETTINGS_INCOMPLETE') process.exitCode = 4;
+        await closeDatabase();
+      })().catch((error) => { console.error(error); process.exit(1); });
+    `;
+    execFileSync(process.execPath, ['-e', blockedAuthorizationScript], { cwd: path.join(__dirname, '..'), env });
+    await query(dbPath, `UPDATE AppSettings SET setting_value = '["BAC - Ahorros HNL - 123456 - Villas Julie"]'
+      WHERE setting_key = 'payment_bank_accounts'`);
+
     const authorizeScript = `
       const { authorizePayment } = require('./services/reservationApprovalService');
       const { closeDatabase } = require('./db');
       (async () => {
         const result = await authorizePayment(1, 99, { notify: async () => ({ ok: true }) });
-        if (!result.ok || result.reservation.status !== 'esperando_pago') process.exitCode = 4;
+        if (!result.ok || result.reservation.status !== 'esperando_pago') process.exitCode = 5;
         await closeDatabase();
       })().catch((error) => { console.error(error); process.exit(1); });
     `;
@@ -153,7 +166,7 @@ describe('database bootstrap', () => {
       const { closeDatabase } = require('./db');
       (async () => {
         const result = await guardarComprobante(1, Buffer.from('pdf-prueba'), 'application/pdf', 'prueba.pdf');
-        if (!result || result.status !== 'pendiente_verificacion') process.exitCode = 5;
+        if (!result || result.status !== 'pendiente_verificacion') process.exitCode = 6;
         await closeDatabase();
       })().catch((error) => { console.error(error); process.exit(1); });
     `;
@@ -163,7 +176,7 @@ describe('database bootstrap', () => {
       const { closeDatabase } = require('./db');
       (async () => {
         const result = await approveReservation(1, 99, { notify: async () => ({ ok: true }) });
-        if (!result.ok || result.reservation.notification_status !== 'sent') process.exitCode = 6;
+        if (!result.ok || result.reservation.notification_status !== 'sent') process.exitCode = 7;
         await closeDatabase();
       })().catch((error) => { console.error(error); process.exit(1); });
     `;

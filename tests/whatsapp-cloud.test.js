@@ -81,6 +81,21 @@ describe('WhatsApp Business Cloud API', () => {
     expect(bot.sendMessage.mock.calls[1][1].text).toContain('1. Uno');
   });
 
+  test('unifica galería, detalle y botones en un mensaje interactivo', async () => {
+    const bot = { sendMessage: jest.fn().mockResolvedValue({ ok: true }) };
+    await sendReplyButtons(bot, '50499990000', {
+      body: 'Detalle de la cabaña',
+      headerImage: { url: 'https://cdn.example.com/galeria.jpg' },
+      buttons: [{ id: 'reserve', title: 'Reservar' }]
+    });
+    expect(bot.sendMessage).toHaveBeenCalledTimes(1);
+    expect(bot.sendMessage.mock.calls[0][1]).toEqual(expect.objectContaining({
+      interactive: expect.objectContaining({
+        header: { type: 'image', image: { link: 'https://cdn.example.com/galeria.jpg' } }
+      })
+    }));
+  });
+
   test('construye listas con identificadores estables', async () => {
     const bot = { sendMessage: jest.fn().mockResolvedValue({ ok: true }) };
     await sendList(bot, '50499990000', {

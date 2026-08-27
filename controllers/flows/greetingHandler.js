@@ -22,10 +22,8 @@ async function handleGreeting(bot, remitente, mensajeTexto) {
         // Nuevo saludo diario
         await establecerUltimoSaludo(remitente, hoy);
         
-        const saludo = `🌴 ¡Bienvenido(a) a Villas Julie! 🏖️ Tu rincón ideal frente al mar te espera.`;
-        await bot.sendMessage(remitente, { text: saludo });
-        
-        // Enviar menú principal después del saludo
+        // El menú interactivo ya contiene la bienvenida. Se envía una sola
+        // respuesta inicial para evitar duplicados y reducir consumo de API.
         await enviarMenuPrincipal(bot, remitente);
         
         return true;
@@ -38,9 +36,6 @@ async function handleGreeting(bot, remitente, mensajeTexto) {
         
         // Intento de recuperación: enviar menú principal si falla el saludo
         try {
-            await bot.sendMessage(remitente, { 
-                text: '¡Hola! Hubo un problema al cargar tu bienvenida, pero aquí tienes nuestro menú:' 
-            });
             await enviarMenuPrincipal(bot, remitente);
         } catch (fallbackError) {
             logger.error(`Error de recuperación en handleGreeting: ${fallbackError.message}`, {

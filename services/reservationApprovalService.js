@@ -4,6 +4,7 @@ const { WhatsAppCloudService } = require('./whatsappCloudService');
 const { sendReplyButtons } = require('./whatsappInteractiveService');
 const { establecerEstado, obtenerEstado } = require('./stateService');
 const { normalizeRecipient } = require('./whatsappCloudService');
+const { getPaymentSettings, paymentAmounts } = require('./paymentSettingsService');
 
 function trackingCode(id) {
   return `VJ-${String(id).padStart(6, '0')}`;
@@ -23,13 +24,20 @@ async function getReservationForReview(id) {
 async function notifyGuest(reservation, decision) {
   const client = new WhatsAppCloudService();
   if (decision === 'payment_authorized') {
+    const payment = await getPaymentSettings();
+    const amounts = paymentAmounts(reservation.total_price, payment.deposit_percentage);
+    const accounts = payment.bank_accounts.map((account) => `• ${account}`).join('\n');
     return sendReplyButtons(client, reservation.phone_number, {
       header: 'Pago autorizado',
       body: `✅ Tu solicitud *${reservation.confirmation_code}* fue autorizada por el administrador.\n\n` +
         `Alojamiento: *${reservation.cabin_name}*\n` +
         `Fechas: *${reservation.start_date} al ${reservation.end_date}*\n` +
-        `Total: *HNL ${Number(reservation.total_price).toLocaleString('es-HN')}*\n\n` +
-        'Ya puedes realizar el pago y enviar por este chat una foto o PDF del comprobante.',
+        `Total: *HNL ${amounts.total.toLocaleString('es-HN', { minimumFractionDigits: 2 })}*\n` +
+        `Anticipo requerido (${payment.deposit_percentage}%): *HNL ${amounts.deposit.toLocaleString('es-HN', { minimumFractionDigits: 2 })}*\n` +
+        `Saldo pendiente: *HNL ${amounts.balance.toLocaleString('es-HN', { minimumFractionDigits: 2 })}*\n\n` +
+        `*Cuentas para transferencia:*\n${accounts}\n` +
+        (payment.notes ? `\n${payment.notes}\n` : '\n') +
+        '\nDespués de pagar, envía por este chat una foto o PDF del comprobante.',
       footer: 'La reserva se confirma después de revisar el comprobante',
       buttons: [{ id: 'main_menu', title: 'Menú principal' }]
     });
@@ -81,6 +89,11 @@ async function authorizePayment(id, adminId, options = {}) {
   if (reservation.status === 'esperando_pago') return { ok: true, alreadyProcessed: true, reservation };
   if (reservation.status !== 'pendiente_autorizacion') {
     return { ok: false, status: 409, code: 'INVALID_RESERVATION_STATUS', currentStatus: reservation.status };
+  }
+
+  const payment = await getPaymentSettings();
+  if (!payment.bank_accounts.length) {
+    return { ok: false, status: 409, code: 'PAYMENT_SETTINGS_INCOMPLETE', currentStatus: reservation.status };
   }
 
   const code = reservation.confirmation_code || trackingCode(id);

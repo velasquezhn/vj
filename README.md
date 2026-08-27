@@ -67,11 +67,13 @@ El menú principal, los alojamientos y las experiencias usan listas interactivas
 
 Los mensajes interactivos solo pueden enviarse dentro de la ventana de atención iniciada por el huésped. Para iniciar conversaciones fuera de esa ventana se debe crear y aprobar una plantilla en WhatsApp Manager; las plantillas no se usan para navegar los menús.
 
-Las galerías de Tortuga, Delfín y Tiburón se administran en **Tipos de Menú**. Use una URL pública HTTPS por línea en formato JPG, PNG o WEBP. El bot envía una portada con el resumen y hasta cuatro fotos; si una imagen falla, continúa con las demás y conserva la información en texto.
+Las galerías de Tortuga, Delfín y Tiburón se administran en **Tipos de Menú**. Use una URL pública HTTPS por línea en formato JPG, PNG o WEBP. Como la API ordinaria de Meta acepta una imagen por mensaje, el backend compone hasta cuatro fotos en una sola imagen y la envía con el resumen. Si no puede generar la composición, utiliza la primera foto y nunca pierde la información textual.
 
 ### Aprobación de reservas
 
 La confirmación ya no depende de grupos ni de Baileys. Usa dos controles administrativos: al aceptar las condiciones se crea una solicitud `pendiente_autorizacion` con código `VJ-000001`; el administrador autoriza el pago y el sistema cambia a `esperando_pago`. Solamente entonces acepta una foto o PDF. Al recibirlo cambia a `pendiente_verificacion`, vuelve a avisar al administrador y requiere la confirmación final.
+
+Antes de autorizar el primer pago, configure **Configuración > Pagos y anticipo** en el panel. El porcentaje predeterminado es 50 %. Registre una cuenta por línea con banco, tipo, número y titular. El sistema bloquea la autorización si no hay cuentas, calcula el anticipo y el saldo, y envía estas instrucciones al huésped sin registrar datos bancarios en el código ni en los logs.
 
 - En el panel: abrir **Reservas**. Primero pulsar **Autorizar pago**; cuando llegue el archivo, abrir el comprobante y pulsar **Confirmar** o **Rechazar**.
 - En WhatsApp: cada número activo registrado en **Configuración > Administradores de WhatsApp** recibe primero **Autorizar pago / Rechazar** y, después del comprobante, **Confirmar / Rechazar**. Como respaldo admite `/aprobar VJ-000001`, `/rechazar VJ-000001 motivo` y `/reserva VJ-000001`; `/aprobar` ejecuta solamente la etapa que corresponda al estado actual.

@@ -1,6 +1,9 @@
 const {
   parseMediaList, mediaType, galleryLimit, buildCabinDetails, cabinMedia
 } = require('../services/whatsappCabinPresentationService');
+const sharp = require('sharp');
+const { composeGallery, isPrivateIp } = require('../services/whatsappCabinGalleryService');
+const { paymentAmounts, normalizeAccounts } = require('../services/paymentSettingsService');
 
 describe('presentación de cabañas en WhatsApp', () => {
   const cabin = {
@@ -33,5 +36,22 @@ describe('presentación de cabañas en WhatsApp', () => {
     expect(galleryLimit()).toBe(1);
     expect(cabinMedia(cabin).images).toHaveLength(1);
     delete process.env.WHATSAPP_CABIN_GALLERY_LIMIT;
+  });
+
+  test('compone varias fotos en una sola imagen para WhatsApp', async () => {
+    const red = await sharp({ create: { width: 20, height: 20, channels: 3, background: 'red' } }).png().toBuffer();
+    const blue = await sharp({ create: { width: 20, height: 20, channels: 3, background: 'blue' } }).png().toBuffer();
+    const collage = await composeGallery([red, blue]);
+    const metadata = await sharp(collage).metadata();
+    expect(metadata.format).toBe('jpeg');
+    expect(metadata.width).toBeGreaterThan(1000);
+  });
+
+  test('bloquea redes privadas y calcula el anticipo del 50 por ciento', () => {
+    expect(isPrivateIp('127.0.0.1')).toBe(true);
+    expect(isPrivateIp('192.168.1.5')).toBe(true);
+    expect(isPrivateIp('8.8.8.8')).toBe(false);
+    expect(paymentAmounts(3000, 50)).toEqual({ total: 3000, deposit: 1500, balance: 1500 });
+    expect(normalizeAccounts([' BAC - 123 ', 'BAC - 123'])).toEqual(['BAC - 123']);
   });
 });

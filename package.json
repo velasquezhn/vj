@@ -2,12 +2,15 @@
   "name": "ijcvwabot",
   "version": "1.0.0",
   "main": "index.js",
-  "engines": { "node": ">=20 <25", "pnpm": ">=10" },
+  "engines": {
+    "node": ">=20 <25",
+    "pnpm": ">=10"
+  },
   "packageManager": "pnpm@11.19.0",
   "scripts": {
     "start": "node index.js",
     "dev": "node --watch index.js",
-    "check": "node --check index.js && node --check adminServer.js && node --check routes/whatsappWebhook.js && node --check routes/adminReservations.js && node --check routes/adminWhatsAppAdmins.js && node --check services/whatsappCloudService.js && node --check services/whatsappAdminService.js && node --check services/whatsappAdminSettingsService.js && node --check services/whatsappCabinPresentationService.js && node --check services/reservationApprovalService.js && node --check services/comprobanteService.js && node --check services/reservaCleanupService.js && node --check controllers/mainMenuHandler.js && node --check controllers/flows/messageProcessor.js && node --check controllers/flows/reservaFlowHandler.js && node --check scripts/migrate-database.js && node --check scripts/seed-database.js",
+    "check": "node --check index.js && node --check adminServer.js && node --check routes/whatsappWebhook.js && node --check routes/adminReservations.js && node --check routes/adminWhatsAppAdmins.js && node --check routes/adminPaymentSettings.js && node --check services/whatsappCloudService.js && node --check services/whatsappAdminService.js && node --check services/whatsappAdminSettingsService.js && node --check services/whatsappCabinPresentationService.js && node --check services/whatsappCabinGalleryService.js && node --check services/paymentSettingsService.js && node --check services/reservationApprovalService.js && node --check services/comprobanteService.js && node --check services/reservaCleanupService.js && node --check controllers/mainMenuHandler.js && node --check controllers/flows/greetingHandler.js && node --check controllers/flows/messageProcessor.js && node --check controllers/flows/reservaFlowHandler.js && node --check scripts/migrate-database.js && node --check scripts/seed-database.js",
     "test": "jest --runInBand --no-coverage",
     "test:watch": "jest --watch --no-coverage",
     "test:coverage": "jest --coverage",
@@ -45,6 +48,7 @@
     "moment": "^2.30.1",
     "multer": "^2.0.2",
     "node-fetch": "^3.3.2",
+    "sharp": "0.35.3",
     "sqlite3": "^6.0.1",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",

@@ -9,7 +9,7 @@ function textFallback(body, options) {
   return `${body}\n\n${lines.join('\n')}`;
 }
 
-async function sendReplyButtons(bot, to, { body, buttons, header, footer, fallbackText }) {
+async function sendReplyButtons(bot, to, { body, buttons, header, headerImage, footer, fallbackText }) {
   const normalizedButtons = buttons.slice(0, 3).map((button) => ({
     type: 'reply',
     reply: {
@@ -23,7 +23,12 @@ async function sendReplyButtons(bot, to, { body, buttons, header, footer, fallba
     body: { text: truncate(body, 1024) },
     action: { buttons: normalizedButtons }
   };
-  if (header) interactive.header = { type: 'text', text: truncate(header, 60) };
+  if (headerImage) {
+    interactive.header = {
+      type: 'image',
+      image: headerImage.id ? { id: headerImage.id } : { link: headerImage.url }
+    };
+  } else if (header) interactive.header = { type: 'text', text: truncate(header, 60) };
   if (footer) interactive.footer = { text: truncate(footer, 60) };
 
   try {
@@ -33,9 +38,9 @@ async function sendReplyButtons(bot, to, { body, buttons, header, footer, fallba
       status: error.response?.status,
       code: error.response?.data?.error?.code
     });
-    return bot.sendMessage(to, {
-      text: fallbackText || textFallback(body, buttons)
-    });
+    const fallback = truncate(fallbackText || textFallback(body, buttons), 1024);
+    if (headerImage) return bot.sendMessage(to, { image: headerImage, caption: fallback });
+    return bot.sendMessage(to, { text: fallback });
   }
 }
 
