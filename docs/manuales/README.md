@@ -1,6 +1,8 @@
 # Manuales oficiales de Villas Julie
 
-Documentación elaborada a partir del backend, el panel administrativo y los flujos de WhatsApp disponibles al 27 de agosto de 2026.
+Documentación elaborada y actualizada a partir del backend, el panel administrativo, los flujos de WhatsApp y las verificaciones de producción realizadas al 27 de agosto de 2026.
+
+La edición vigente incorpora roles administrativos protegidos, auditoría, reportes y exportación, cola persistente de mensajes, copias de seguridad descargables y las reglas comerciales confirmadas. Las cuentas bancarias incluidas en la demostración siguen marcadas como **PRUEBA / NO PAGAR** y deben reemplazarse antes de aceptar pagos reales.
 
 - `01_Manual_General_Villas_Julie.docx`: visión general, arquitectura operativa, flujo de reservas, módulos, reglas, preguntas frecuentes y capturas requeridas.
 - `02_Manual_Administrador_Panel_Villas_Julie.docx`: operación diaria del panel.
