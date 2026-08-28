@@ -236,8 +236,15 @@ class BackupService {
     return new Promise((resolve, reject) => {
       const source = new sqlite3.Database(CONFIG.dbPath, sqlite3.OPEN_READONLY, (openError) => {
         if (openError) return reject(openError);
-        source.backup(destinationPath, (backupError) => {
-          source.close(() => backupError ? reject(backupError) : resolve());
+        const backup = source.backup(destinationPath, (initializeError) => {
+          if (initializeError) return source.close(() => reject(initializeError));
+          backup.step(-1, (stepError, completed) => {
+            source.close(() => {
+              if (stepError) return reject(stepError);
+              if (!completed || !backup.completed) return reject(new Error('La copia SQLite no terminó correctamente'));
+              return resolve();
+            });
+          });
         });
       });
     });

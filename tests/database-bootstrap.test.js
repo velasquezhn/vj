@@ -68,6 +68,9 @@ describe('database bootstrap', () => {
     expect(backups).toHaveLength(1);
     const integrity = await query(path.join(backupDir, backups[0]), 'PRAGMA integrity_check');
     expect(integrity[0].integrity_check).toBe('ok');
+    const copiedTables = await query(path.join(backupDir, backups[0]), "SELECT name FROM sqlite_master WHERE type='table'");
+    expect(copiedTables.map((row) => row.name)).toEqual(expect.arrayContaining(['Admins', 'Reservations', 'Cabins', 'WhatsAppEvents']));
+    expect(fs.statSync(path.join(backupDir, backups[0])).size).toBeGreaterThan(4096);
   });
 
   test('configures the authorized WhatsApp administrators and removes the retired number', async () => {
