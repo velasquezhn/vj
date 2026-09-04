@@ -5,7 +5,7 @@ const request = require('supertest');
 // Esta suite debe ser independiente de la base local y de cualquier dato sembrado.
 jest.mock('../services/whatsappAdminSettingsService', () => ({
   ...jest.requireActual('../services/whatsappAdminSettingsService'),
-  activeAdminNumbers: jest.fn(async () => []),
+  activeAdminNumbers: async () => [],
 }));
 
 const { createWhatsAppWebhook, verifySignature, extractEvents, createSenderQueue, messageText, normalizeInteractiveReply } = require('../routes/whatsappWebhook');
