@@ -73,6 +73,12 @@ El menú principal, los alojamientos y las experiencias usan listas interactivas
 
 Los mensajes interactivos solo pueden enviarse dentro de la ventana de atención iniciada por el huésped. Para iniciar conversaciones fuera de esa ventana se debe crear y aprobar una plantilla en WhatsApp Manager; las plantillas no se usan para navegar los menús.
 
+### Fechas escritas por WhatsApp
+
+El formato recomendado es `DD/MM/AAAA al DD/MM/AAAA`, pero el bot también acepta guiones, formato ISO, meses escritos, rangos sin año y una fecha acompañada por la duración (`15 de septiembre por 3 noches`). En números siempre interpreta día antes que mes. Si falta el año, selecciona la próxima ocurrencia futura y resuelve correctamente rangos que cruzan diciembre y enero.
+
+La validación usa el calendario de Honduras aunque Railway ejecute el proceso en UTC. Exige dos fechas válidas, entrada no pasada, salida posterior y al menos una noche. El bot siempre presenta día, fecha, año, horarios y total de noches, y no avanza hasta recibir la confirmación del huésped.
+
 Las galerías de Tortuga, Delfín y Tiburón se administran en **Tipos de Menú**. Use una URL pública HTTPS por línea en formato JPG, PNG o WEBP. Como la API ordinaria de Meta acepta una imagen por mensaje, el backend compone hasta cuatro fotos en una sola imagen y la envía con el resumen. Si no puede generar la composición, utiliza la primera foto y nunca pierde la información textual.
 
 ### Aprobación de reservas

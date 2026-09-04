@@ -19,12 +19,6 @@ const { getBusinessSettings, reservationTerms } = require('../../services/busine
 
 // Funciones auxiliares para mejorar la legibilidad
 
-const calcularDiferenciaDias = (entrada, salida) => {
-    const fechaEntrada = new Date(entrada.split('/').reverse().join('-'));
-    const fechaSalida = new Date(salida.split('/').reverse().join('-'));
-    return Math.ceil((fechaSalida - fechaEntrada) / (1000 * 60 * 60 * 24));
-};
-
 const asignarAlojamiento = (personas) => {
     if (personas <= 3) return 'tortuga';
     if (personas <= 6) return 'delfin';
@@ -77,14 +71,8 @@ async function handleReservaState(bot, remitente, mensajeTexto, estado, datos, m
                 const fechaEntradaStr = validacionFechas.entrada; // DD/MM/YYYY
                 const fechaSalidaStr = validacionFechas.salida;   // DD/MM/YYYY
                 
-                // Convertir a objetos Date para cálculos
-                const [diaEnt, mesEnt, añoEnt] = fechaEntradaStr.split('/');
-                const [diaSal, mesSal, añoSal] = fechaSalidaStr.split('/');
-                const fechaEntrada = new Date(añoEnt, mesEnt - 1, diaEnt);
-                const fechaSalida = new Date(añoSal, mesSal - 1, diaSal);
-                
                 // Calcular noches
-                const noches = Math.ceil((fechaSalida - fechaEntrada) / (1000 * 60 * 60 * 24));
+                const noches = validacionFechas.noches;
                 
                 // Crear fechas completas más descriptivas
                 const fechaEntradaCompleta = formatearFechaCompleta(fechaEntradaStr);

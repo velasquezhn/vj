@@ -24,11 +24,18 @@ function reservationStart() {
   const year = new Date().getFullYear();
   return `📅 *Nueva solicitud de reserva*
 
-Escribe las fechas de entrada y salida.
+Escribe la *fecha de entrada y la fecha de salida* en un solo mensaje.
+
+Formato recomendado: *día/mes/año al día/mes/año*.
 
 Ejemplos:
 • 15/09/${year} al 18/09/${year}
 • del 15 al 18 de septiembre
+• 15 de septiembre por 3 noches
+
+Si omites el año, usaré la próxima fecha disponible. En fechas numéricas interpretamos primero el *día* y después el *mes*.
+
+Antes de continuar te mostraré exactamente las fechas entendidas para que las confirmes.
 
 Escribe *cancelar* para salir o *menú* para volver al inicio.`;
 }
