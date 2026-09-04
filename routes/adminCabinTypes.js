@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { 
   loadMenuCabinTypes, 
+  loadAllCabinTypes,
   getCabinTypeByKey,
   toggleCabinType,
   updateCabinType,
@@ -19,10 +20,30 @@ function validatePhotos(fotos) {
   return null;
 }
 
+function validateCabinTypeNumbers(data, { creating = false } = {}) {
+  const integerFields = [
+    ['capacidad', 1],
+    ['habitaciones', 0],
+    ['baños', 0],
+  ];
+  for (const [field, minimum] of integerFields) {
+    if (data[field] === undefined && !creating) continue;
+    const value = Number(data[field] ?? 0);
+    if (!Number.isInteger(value) || value < minimum) {
+      return `${field} debe ser un número entero igual o mayor que ${minimum}`;
+    }
+  }
+  if (data.precio_noche !== undefined || creating) {
+    const price = Number(data.precio_noche);
+    if (!Number.isFinite(price) || price < 0) return 'El precio debe ser un número igual o mayor que 0';
+  }
+  return null;
+}
+
 // GET / - Obtener todos los tipos de menú
 router.get('/', async (req, res) => {
   try {
-    const types = await loadMenuCabinTypes();
+    const types = await loadAllCabinTypes();
     res.json({
       success: true,
       data: types,
@@ -32,8 +53,7 @@ router.get('/', async (req, res) => {
     console.error('Error fetching cabin types:', error);
     res.status(500).json({
       success: false,
-      message: 'Error al obtener tipos de cabañas',
-      error: error.message
+      message: 'Error al obtener tipos de cabañas'
     });
   }
 });
@@ -79,8 +99,7 @@ router.get('/:typeKey', async (req, res) => {
     console.error('Error fetching cabin type:', error);
     res.status(500).json({
       success: false,
-      message: 'Error al obtener tipo de cabaña',
-      error: error.message
+      message: 'Error al obtener tipo de cabaña'
     });
   }
 });
@@ -90,21 +109,8 @@ router.put('/:typeKey', async (req, res) => {
   try {
     const { typeKey } = req.params;
     const updateData = req.body;
-    
-    // Validar datos requeridos
-    if (updateData.capacidad && updateData.capacidad < 1) {
-      return res.status(400).json({
-        success: false,
-        message: 'La capacidad debe ser mayor a 0'
-      });
-    }
-    
-    if (updateData.precio_noche && updateData.precio_noche < 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'El precio debe ser mayor o igual a 0'
-      });
-    }
+    const numericError = validateCabinTypeNumbers(updateData);
+    if (numericError) return res.status(400).json({ success: false, message: numericError });
     const photoError = validatePhotos(updateData.fotos);
     if (photoError) return res.status(400).json({ success: false, message: photoError });
     
@@ -125,8 +131,7 @@ router.put('/:typeKey', async (req, res) => {
     console.error('Error updating cabin type:', error);
     res.status(500).json({
       success: false,
-      message: 'Error al actualizar tipo de cabaña',
-      error: error.message
+      message: 'Error al actualizar tipo de cabaña'
     });
   }
 });
@@ -161,8 +166,7 @@ router.patch('/:typeKey/toggle', async (req, res) => {
     console.error('Error toggling cabin type:', error);
     res.status(500).json({
       success: false,
-      message: 'Error al cambiar estado del tipo',
-      error: error.message
+      message: 'Error al cambiar estado del tipo'
     });
   }
 });
@@ -174,7 +178,7 @@ router.post('/', async (req, res) => {
     
     // Validar campos requeridos
     const requiredFields = ['type_key', 'nombre', 'tipo', 'capacidad', 'precio_noche'];
-    const missingFields = requiredFields.filter(field => !typeData[field]);
+    const missingFields = requiredFields.filter((field) => typeData[field] === undefined || String(typeData[field]).trim() === '');
     
     if (missingFields.length > 0) {
       return res.status(400).json({
@@ -183,18 +187,12 @@ router.post('/', async (req, res) => {
       });
     }
     
-    // Validar datos
-    if (typeData.capacidad < 1) {
+    const numericError = validateCabinTypeNumbers(typeData, { creating: true });
+    if (numericError) return res.status(400).json({ success: false, message: numericError });
+    if (!/^[a-z0-9_]{2,40}$/.test(String(typeData.type_key))) {
       return res.status(400).json({
         success: false,
-        message: 'La capacidad debe ser mayor a 0'
-      });
-    }
-    
-    if (typeData.precio_noche < 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'El precio debe ser mayor o igual a 0'
+        message: 'La clave debe contener entre 2 y 40 caracteres: letras minúsculas, números o guion bajo'
       });
     }
     const photoError = validatePhotos(typeData.fotos);
@@ -215,10 +213,12 @@ router.post('/', async (req, res) => {
     });
   } catch (error) {
     console.error('Error creating cabin type:', error);
+    if (error.code === 'SQLITE_CONSTRAINT' || error.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+      return res.status(409).json({ success: false, message: 'Ya existe un tipo de cabaña con esa clave' });
+    }
     res.status(500).json({
       success: false,
       message: 'Error al crear tipo de cabaña',
-      error: error.message
     });
   }
 });

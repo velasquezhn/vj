@@ -61,11 +61,8 @@ function parseDateRange(texto) {
           // Si el mes ya pasó este año, usar el año siguiente
           if (mesNumero < mesActual) {
             año = año + 1;
-            console.log(`[DEBUG] Mes ${mes} ya pasó en ${año-1}, usando año ${año}`);
           }
         }
-        
-        console.log(`[DEBUG] Parseando rango: día1=${dia1}, día2=${dia2}, mes=${mes}, año=${año}`);
         
         const fecha1 = dayjs(`${dia1}/${mes}/${año}`, 'D/MMMM/YYYY', 'es');
         const fecha2 = dayjs(`${dia2}/${mes}/${año}`, 'D/MMMM/YYYY', 'es');

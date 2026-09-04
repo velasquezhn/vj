@@ -15,8 +15,10 @@ function parseBoolean(name, defaultValue) {
 }
 
 function loadConfig({ validateWhatsApp = process.env.NODE_ENV === 'production' } = {}) {
+  const nodeEnv = process.env.NODE_ENV || 'development';
   const config = {
-    nodeEnv: process.env.NODE_ENV || 'development',
+    nodeEnv,
+    appEnv: String(process.env.APP_ENV || (nodeEnv === 'production' ? 'qa' : 'local')).toLowerCase(),
     port: Number(process.env.PORT || 4000),
     databasePath: path.resolve(process.env.DB_PATH || './data/bot_database.sqlite'),
     jwtSecret: process.env.JWT_SECRET || '',

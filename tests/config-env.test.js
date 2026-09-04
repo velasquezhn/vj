@@ -20,6 +20,20 @@ describe('configuración de producción', () => {
     expect(loadConfig().whatsapp.enabled).toBe(false);
   });
 
+  test('identifica como QA un runtime de despliegue sin APP_ENV explícito', () => {
+    process.env.WHATSAPP_ENABLED = 'false';
+    delete process.env.APP_ENV;
+    const { loadConfig } = require('../config/env');
+    expect(loadConfig().appEnv).toBe('qa');
+  });
+
+  test('respeta la identidad explícita del ambiente', () => {
+    process.env.WHATSAPP_ENABLED = 'false';
+    process.env.APP_ENV = 'production';
+    const { loadConfig } = require('../config/env');
+    expect(loadConfig().appEnv).toBe('production');
+  });
+
   test('exige las credenciales oficiales cuando WhatsApp está activado', () => {
     process.env.WHATSAPP_ENABLED = 'true';
     const { loadConfig } = require('../config/env');

@@ -87,7 +87,8 @@ if (whatsappConfigured && (process.env.NODE_ENV !== 'test' || process.env.ENABLE
 app.get('/health', (_req, res) => res.status(200).json({
   status: 'ok',
   service: 'villas-julie-api',
-  environment: config.nodeEnv,
+  environment: config.appEnv,
+  runtimeMode: config.nodeEnv,
   whatsappEnabled,
   whatsappConfigured,
   uptimeSeconds: Math.floor(process.uptime())

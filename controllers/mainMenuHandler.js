@@ -245,9 +245,6 @@ async function manejarPostReserva(bot, remitente, mensaje, establecerEstado) {
 
 // Función auxiliar para buscar reservas
 async function buscarReservaActivaOPendiente(telefono) {
-  console.log('### EJECUTANDO buscarReservaActivaOPendiente ###');
-  console.log('### TELEFONO:', telefono);
-  
   try {
     const { runQuery } = require('../db');
     
@@ -264,9 +261,7 @@ async function buscarReservaActivaOPendiente(telefono) {
       LIMIT 1
     `;
     
-    console.log('[DEBUG] SQL:', sql);
     const rows = await runQuery(sql, [telefono]);
-    console.log('[DEBUG] Rows:', rows);
     
     if (rows && rows.length > 0) {
       const reserva = rows[0];
@@ -275,12 +270,9 @@ async function buscarReservaActivaOPendiente(telefono) {
         ? 'activa'
         : 'pendiente';
       
-      const resultado = { ...reserva, tipo };
-      console.log('[DEBUG] Resultado:', resultado);
-      return resultado;
+      return { ...reserva, tipo };
     }
 
-    console.log('[DEBUG] No reservas encontradas');
     return null;
   } catch (error) {
     console.error('Error buscando reserva:', error);

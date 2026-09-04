@@ -10,8 +10,6 @@ const db = require('../db');
 // Cargar actividades para el menú desde tabla Activities
 const loadMenuActivities = async () => {
   try {
-    console.log('[DEBUG] Cargando actividades desde tabla Activities...');
-    
     const activities = await db.runQuery(`
       SELECT 
         activity_id,
@@ -46,8 +44,6 @@ const loadMenuActivities = async () => {
       ORDER BY orden_menu ASC, orden ASC, nombre ASC
     `);
     
-    console.log(`[DEBUG] Encontradas ${activities.length} actividades activas`);
-    
     // Convertir datos JSON strings de vuelta a objetos
     const activitiesFormatted = activities.map(activity => ({
       ...activity,
@@ -75,7 +71,6 @@ const loadMenuActivities = async () => {
       certificaciones: activity.certificaciones ? JSON.parse(activity.certificaciones) : []
     }));
     
-    console.log('[DEBUG] Actividades formateadas para compatibilidad:', activitiesFormatted.map(a => a.nombre));
     return activitiesFormatted;
     
   } catch (e) {

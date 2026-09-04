@@ -5,11 +5,20 @@ const db = require('../db');
  * Utiliza la tabla CabinTypes que es administrable por separado
  */
 
-// Cargar tipos de cabañas para el menú desde tabla CabinTypes
-const loadMenuCabinTypes = async () => {
+function formatCabinType(type) {
+  return {
+    ...type,
+    id: `cab_type_${type.type_key}`,
+    fotos: safeJson(type.fotos, []),
+    comodidades: safeJson(type.comodidades, []),
+    ubicacion: safeJson(type.ubicacion, {}),
+    activo: Boolean(type.activo),
+    reservas: []
+  };
+}
+
+async function loadCabinTypes({ includeInactive = false } = {}) {
   try {
-    console.log('[DEBUG] Cargando tipos de cabañas desde tabla CabinTypes...');
-    
     const types = await db.runQuery(`
       SELECT 
         type_id,
@@ -28,42 +37,21 @@ const loadMenuCabinTypes = async () => {
         orden,
         activo
       FROM CabinTypes 
-      WHERE activo = true 
+      ${includeInactive ? '' : 'WHERE activo = true'}
       ORDER BY orden ASC
     `);
-    
-    console.log(`[DEBUG] Encontrados ${types.length} tipos activos`);
-    
-    // Convertir datos JSON strings de vuelta a objetos
-    const typesFormatted = types.map(type => ({
-      ...type,
-      // Campos para compatibilidad con el código existente
-      id: `cab_type_${type.type_key}`,
-      nombre: type.nombre,
-      tipo: type.tipo,
-      capacidad: type.capacidad,
-      habitaciones: type.habitaciones,
-      baños: type.baños,
-      precio_noche: type.precio_noche,
-      moneda: type.moneda,
-      fotos: safeJson(type.fotos, []),
-      comodidades: safeJson(type.comodidades, []),
-      ubicacion: safeJson(type.ubicacion, {}),
-      activo: Boolean(type.activo),
-      descripcion: type.descripcion,
-      reservas: [] // Siempre vacío para tipos de menú
-    }));
-    
-    console.log('[DEBUG] Tipos formateados para compatibilidad:', typesFormatted.map(t => t.nombre));
-    return typesFormatted;
-    
+    return types.map(formatCabinType);
   } catch (e) {
     console.error('Error loading menu cabin types from CabinTypes table:', e);
-    console.error('❌ CRÍTICO: No se pudo cargar tipos de menú desde base de datos');
-    console.error('   Asegúrate de que la tabla CabinTypes existe y tiene datos');
-    return [];
+    throw e;
   }
-};
+}
+
+// El menú de WhatsApp solo muestra tipos activos.
+const loadMenuCabinTypes = () => loadCabinTypes();
+
+// El panel necesita ver también los inactivos para poder reactivarlos.
+const loadAllCabinTypes = () => loadCabinTypes({ includeInactive: true });
 
 function safeJson(value, fallback) {
   try { return value ? JSON.parse(value) : fallback; }
@@ -74,19 +62,13 @@ function safeJson(value, fallback) {
 const getCabinTypeByKey = async (typeKey) => {
   try {
     const type = await db.runQuery(
-      'SELECT * FROM CabinTypes WHERE type_key = ? AND activo = true',
+      'SELECT * FROM CabinTypes WHERE type_key = ?',
       [typeKey]
     );
     
     if (type.length > 0) {
       const typeData = type[0];
-      return {
-        ...typeData,
-        fotos: safeJson(typeData.fotos, []),
-        comodidades: safeJson(typeData.comodidades, []),
-        ubicacion: safeJson(typeData.ubicacion, {}),
-        activo: Boolean(typeData.activo)
-      };
+      return formatCabinType(typeData);
     }
     return null;
   } catch (e) {
@@ -126,17 +108,17 @@ const updateCabinType = async (typeKey, updateData) => {
     });
     
     // Campos especiales que requieren JSON.stringify
-    if (updateData.fotos) {
+    if (updateData.fotos !== undefined) {
       fields.push('fotos = ?');
       values.push(JSON.stringify(updateData.fotos));
     }
     
-    if (updateData.comodidades) {
+    if (updateData.comodidades !== undefined) {
       fields.push('comodidades = ?');
       values.push(JSON.stringify(updateData.comodidades));
     }
     
-    if (updateData.ubicacion) {
+    if (updateData.ubicacion !== undefined) {
       fields.push('ubicacion = ?');
       values.push(JSON.stringify(updateData.ubicacion));
     }
@@ -156,8 +138,7 @@ const updateCabinType = async (typeKey, updateData) => {
 
 // Crear un nuevo tipo de cabaña
 const createCabinType = async (typeData) => {
-  try {
-    const sql = `
+  const sql = `
       INSERT INTO CabinTypes (
         type_key, nombre, tipo, capacidad, habitaciones, baños,
         precio_noche, moneda, fotos, comodidades, ubicacion,
@@ -165,7 +146,7 @@ const createCabinType = async (typeData) => {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
     
-    const params = [
+  const params = [
       typeData.type_key,
       typeData.nombre,
       typeData.tipo,
@@ -178,20 +159,17 @@ const createCabinType = async (typeData) => {
       JSON.stringify(typeData.comodidades || []),
       JSON.stringify(typeData.ubicacion || {}),
       typeData.descripcion || '',
-      typeData.orden || 999,
+      typeData.orden ?? 999,
       typeData.activo !== false // por defecto true
     ];
     
-    return (await db.runExecute(sql, params)).changes > 0;
-  } catch (e) {
-    console.error('Error creating cabin type:', e);
-    return false;
-  }
+  return (await db.runExecute(sql, params)).changes > 0;
 };
 
 module.exports = {
   // Función principal para el menú
   loadMenuCabinTypes,
+  loadAllCabinTypes,
   
   // Funciones de administración
   getCabinTypeByKey,

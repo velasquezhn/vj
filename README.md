@@ -33,6 +33,7 @@ ADMIN_DEFAULT_USERNAME=admin ADMIN_DEFAULT_PASSWORD='una-clave-larga' pnpm admin
 Copie `.env.example`; nunca versione `.env` ni credenciales.
 
 - `PORT`: puerto HTTP asignado por la plataforma.
+- `APP_ENV`: identidad visible del despliegue (`local`, `qa` o `production`). Este ambiente debe usar `qa`; el despliegue definitivo debe establecer `production` de forma explícita.
 - `DB_PATH`: ruta del SQLite persistente.
 - `CORS_ORIGIN`: orígenes permitidos separados por coma.
 - `JWT_SECRET`: secreto aleatorio de al menos 32 bytes.
@@ -124,6 +125,7 @@ El repositorio incluye `railway.json`: usa el `Dockerfile`, comprueba `/health`,
 
 ```dotenv
 NODE_ENV=production
+APP_ENV=qa
 RAILWAY_RUN_UID=0
 DB_PATH=/app/storage/data/bot_database.sqlite
 RECEIPTS_DIR=/app/storage/comprobantes
