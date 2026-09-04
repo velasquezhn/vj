@@ -12,6 +12,7 @@ const {
   logAdminActivity 
 } = require('../middleware/apiValidation');
 const logger = require('../config/logger');
+const { setSessionCookie, clearSessionCookie } = require('../utils/sessionCookie');
 
 /**
  * @swagger
@@ -141,6 +142,7 @@ router.post('/login',
       ip: req.ip
     });
     
+    setSessionCookie(res, token);
     res.json({
       success: true,
       message: 'Login exitoso',
@@ -240,18 +242,6 @@ router.post('/verify',
   logAdminActivity('token_verification'),
   async (req, res) => {
   try {
-    const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1];
-    
-    if (!token) {
-      logger.warn('Verificación de token sin token', { ip: req.ip });
-      return res.status(401).json({
-        success: false,
-        message: 'Token no proporcionado',
-        error: 'NO_TOKEN'
-      });
-    }
-    
     logger.info('Token verificado exitosamente', { username: req.user.username, ip: req.ip });
     return res.json({
       success: true,
@@ -413,6 +403,7 @@ router.post('/change-password', authenticateToken, async (req, res) => {
     await runExecute(`UPDATE Admins SET password_hash = ?, must_change_password = 0, token_version = token_version + 1,
       updated_at = datetime('now') WHERE admin_id = ?`, [await hashPassword(newPassword), req.user.adminId]);
     revokeToken(req.authToken);
+    clearSessionCookie(res);
     return res.json({ success: true, message: 'Contraseña actualizada. Inicia sesión nuevamente.' });
   } catch (error) {
     logger.error('Error cambiando contraseña propia', { adminId: req.user?.adminId, error: error.message });

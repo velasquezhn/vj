@@ -169,4 +169,6 @@ curl -fsS http://localhost:4000/ready
 
 En Meta complete “Verify and save”, envíe `hola` desde un número permitido y pruebe respuesta, imagen y cambio de estado administrativo. Los logs no deben contener tokens ni cuerpos completos.
 
-Las rutas administrativas usan JWT. Confirme o cancele con `PUT /admin/reservations/:id`; los comandos de grupo fueron eliminados. Rote todos los secretos que hayan estado en el historial antes de publicar el repositorio saneado.
+Las rutas administrativas usan JWT mediante una cookie `HttpOnly`. En el runtime HTTPS la cookie se marca `Secure` y `SameSite=None`; el panel envía credenciales CORS y la cabecera `X-VJ-Client` como protección adicional contra solicitudes externas. Durante la transición también se acepta el encabezado `Authorization: Bearer` para no interrumpir sesiones QA ya abiertas. Cerrar sesión y cambiar la contraseña invalidan la sesión del servidor y eliminan la cookie.
+
+Confirme o cancele con `PUT /admin/reservations/:id`; los comandos de grupo fueron eliminados. Rote todos los secretos que hayan estado en el historial antes de publicar el repositorio saneado.

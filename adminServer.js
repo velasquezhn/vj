@@ -50,6 +50,7 @@ const actividadesService = require('./services/actividadesService');
 const backupService = require('./services/backupService');
 const reservaCleanupService = require('./services/reservaCleanupService');
 const notificationQueueService = require('./services/notificationQueueService');
+const { clearSessionCookie } = require('./utils/sessionCookie');
 
 const app = express();
 app.disable('x-powered-by');
@@ -110,7 +111,7 @@ app.use(cors({
   origin: config.corsOrigins,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-VJ-Client']
 }));
 
 app.use((req, res, next) => {
@@ -294,13 +295,14 @@ app.post('/auth/logout', authenticateToken, async (req, res) => {
       revokeToken(token);
     }
     await db.runExecute('UPDATE Admins SET token_version = token_version + 1 WHERE admin_id = ?', [req.user.adminId]);
+    clearSessionCookie(res);
     
     res.json({
       success: true,
       message: 'Logout exitoso'
     });
   } catch (error) {
-    console.error('[AUTH] Error en logout:', error);
+    logger.error('Error cerrando sesión administrativa', { adminId: req.user?.adminId, error: error.message });
     res.status(500).json({
       success: false,
       message: 'Error en logout'

@@ -4,6 +4,7 @@
  */
 
 const jwt = require('jsonwebtoken');
+const { extractSessionToken, isCookieSessionRequestSafe } = require('../utils/sessionCookie');
 const crypto = require('crypto');
 const logger = require('../config/logger');
 const { normalizeAdminRole } = require('../utils/adminRoles');
@@ -141,8 +142,7 @@ class JWTSecurity {
  * Middleware para verificar token JWT con logging de seguridad
  */
 function authenticateToken(req, res, next) {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
+  const token = extractSessionToken(req);
   const clientIP = req.ip || req.connection.remoteAddress;
 
   if (!token) {
@@ -157,6 +157,19 @@ function authenticateToken(req, res, next) {
       success: false, 
       message: 'Token de acceso requerido',
       error: 'MISSING_TOKEN'
+    });
+  }
+
+  if (!isCookieSessionRequestSafe(req)) {
+    logger.warn('Solicitud con cookie rechazada por protección CSRF', {
+      ip: clientIP,
+      endpoint: req.originalUrl,
+      method: req.method
+    });
+    return res.status(403).json({
+      success: false,
+      message: 'Solicitud administrativa no válida',
+      error: 'INVALID_SESSION_REQUEST'
     });
   }
 
@@ -183,8 +196,7 @@ function authenticateToken(req, res, next) {
       logger.warn('Token JWT inválido', {
         ip: clientIP,
         error: err.message,
-        endpoint: req.originalUrl,
-        tokenPreview: token.substring(0, 10) + '...'
+        endpoint: req.originalUrl
       });
       
       return res.status(403).json({ 
@@ -307,9 +319,7 @@ function revokeToken(token) {
       revokedTokens.delete(token);
     }, 24 * 60 * 60 * 1000); // 24 horas
     
-    logger.info('Token revocado exitosamente', {
-      tokenPreview: token.substring(0, 10) + '...'
-    });
+    logger.info('Token revocado exitosamente');
   }
 }
 
