@@ -4,8 +4,8 @@
  */
 
 const jwt = require('jsonwebtoken');
+const { randomUUID } = require('crypto');
 const { extractSessionToken, isCookieSessionRequestSafe } = require('../utils/sessionCookie');
-const crypto = require('crypto');
 const logger = require('../config/logger');
 const { normalizeAdminRole } = require('../utils/adminRoles');
 
@@ -20,123 +20,6 @@ if (!JWT_SECRET) {
 
 // Lista de tokens revocados (en producción usar Redis)
 const revokedTokens = new Set();
-
-// Store para refresh tokens
-const refreshTokens = new Map();
-
-class JWTSecurity {
-  /**
-   * Generar token con refresh token incluido
-   */
-  static generateTokenPair(adminData) {
-    const payload = {
-      adminId: adminData.admin_id,
-      username: adminData.username,
-      role: normalizeAdminRole(adminData.role),
-      iat: Math.floor(Date.now() / 1000),
-      jti: this.generateJTI(),
-      tokenVersion: Number(adminData.token_version || 1)
-    };
-    
-    // Access token (corta duración)
-    const accessToken = jwt.sign(payload, JWT_SECRET, { 
-      expiresIn: '15m', // 15 minutos
-      issuer: 'villas-julie-admin',
-      audience: 'villas-julie-dashboard'
-    });
-
-    // Refresh token (larga duración)
-    const refreshToken = this.generateRefreshToken(adminData.admin_id);
-    
-    logger.info('Token pair generado', {
-      adminId: payload.adminId,
-      username: payload.username,
-      role: payload.role,
-      jti: payload.jti,
-      accessTokenExpiry: '15m',
-      refreshTokenExpiry: '7d'
-    });
-    
-    return { accessToken, refreshToken };
-  }
-
-  /**
-   * Generar refresh token seguro
-   */
-  static generateRefreshToken(adminId) {
-    const refreshToken = crypto.randomBytes(32).toString('hex');
-    const expiresAt = Date.now() + (7 * 24 * 60 * 60 * 1000); // 7 días
-    
-    refreshTokens.set(refreshToken, {
-      adminId,
-      expiresAt,
-      used: false
-    });
-    
-    // Limpiar refresh token expirado
-    setTimeout(() => {
-      refreshTokens.delete(refreshToken);
-    }, 7 * 24 * 60 * 60 * 1000);
-    
-    return refreshToken;
-  }
-
-  /**
-   * Validar y renovar token usando refresh token
-   */
-  static refreshAccessToken(refreshToken, adminData) {
-    const tokenData = refreshTokens.get(refreshToken);
-    
-    if (!tokenData || tokenData.used || Date.now() > tokenData.expiresAt) {
-      logger.warn('Intento de uso de refresh token inválido', {
-        token: refreshToken.substring(0, 8) + '...',
-        valid: !!tokenData,
-        used: tokenData?.used,
-        expired: tokenData ? Date.now() > tokenData.expiresAt : 'unknown'
-      });
-      return null;
-    }
-    
-    // Marcar como usado (one-time use)
-    tokenData.used = true;
-    
-    // Generar nuevo par de tokens
-    return this.generateTokenPair(adminData);
-  }
-
-  /**
-   * Generar JWT ID único
-   */
-  static generateJTI() {
-    return Date.now().toString(36) + crypto.randomBytes(4).toString('hex');
-  }
-
-  /**
-   * Validar fortaleza del token
-   */
-  static validateTokenSecurity(token) {
-    try {
-      const decoded = jwt.decode(token, { complete: true });
-      
-      // Verificar algoritmo de firma
-      if (decoded.header.alg !== 'HS256') {
-        return { valid: false, reason: 'Invalid algorithm' };
-      }
-      
-      // Verificar claims necesarios
-      const requiredClaims = ['adminId', 'username', 'role', 'iat', 'exp', 'jti'];
-      const missingClaims = requiredClaims.filter(claim => !(claim in decoded.payload));
-      
-      if (missingClaims.length > 0) {
-        return { valid: false, reason: `Missing claims: ${missingClaims.join(', ')}` };
-      }
-      
-      return { valid: true };
-    } catch (error) {
-      return { valid: false, reason: error.message };
-    }
-  }
-}
 
 /**
  * Middleware para verificar token JWT con logging de seguridad
@@ -327,7 +210,7 @@ function revokeToken(token) {
  * Generar JWT ID único
  */
 function generateJTI() {
-  return Date.now().toString(36) + Math.random().toString(36).substr(2);
+  return randomUUID();
 }
 
 /**
