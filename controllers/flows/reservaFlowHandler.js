@@ -451,10 +451,27 @@ ${reservationTerms(businessSettings)}
                     });
                     await establecerEstado(remitente, ESTADOS_RESERVA.ESPERANDO_CONFIRMACION, datos);
                 } catch (error) {
-                    console.error('Error procesando comprobante:', error);
-                    await bot.sendMessage(remitente, {
-                        text: '⚠️ Error procesando tu comprobante. Intenta nuevamente.'
-                    });
+                    if (error.code === 'PAYMENT_WINDOW_EXPIRED') {
+                        await bot.sendMessage(remitente, {
+                            text: `⌛ *EL PLAZO DE PAGO VENCIÓ*\n\nLa solicitud *${datos.confirmationCode || ''}* no recibió un comprobante dentro de las 24 horas autorizadas. No se realizó ningún cargo.\n\nSelecciona *Menú principal* para iniciar una nueva solicitud.`
+                        });
+                        await establecerEstado(remitente, 'MENU_PRINCIPAL', {});
+                    } else if (error.code === 'RECEIPT_ALREADY_RECEIVED') {
+                        await bot.sendMessage(remitente, {
+                            text: `✅ Ya recibimos el comprobante de la solicitud *${datos.confirmationCode || ''}*. Está pendiente de revisión administrativa.`
+                        });
+                        await establecerEstado(remitente, ESTADOS_RESERVA.ESPERANDO_CONFIRMACION, datos);
+                    } else if (error.code === 'RECEIPT_NOT_ALLOWED') {
+                        await bot.sendMessage(remitente, {
+                            text: 'El envío de comprobantes no está habilitado para esta solicitud. Escribe *menú* para consultar las opciones disponibles.'
+                        });
+                        await establecerEstado(remitente, 'MENU_PRINCIPAL', {});
+                    } else {
+                        logger.error('Error procesando comprobante', { reservationId: datos.reservaId, code: error.code, error: error.message });
+                        await bot.sendMessage(remitente, {
+                            text: '⚠️ No pudimos procesar el comprobante. Verifica que sea una foto o PDF válido e intenta nuevamente.'
+                        });
+                    }
                 }
                 break;
             }

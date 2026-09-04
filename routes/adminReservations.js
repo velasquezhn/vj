@@ -1,9 +1,6 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
-const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
 const { authenticateToken } = require('../middleware/auth');
 const { 
   validateAdminReservation,
@@ -13,30 +10,9 @@ const {
   logAdminActivity
 } = require('../middleware/apiValidation');
 const logger = require('../config/logger');
-const { COMPROBANTES_DIR, ALLOWED_MIME_TYPES, MAX_RECEIPT_BYTES } = require('../services/comprobanteService');
-const { authorizePayment, approveReservation, rejectReservation } = require('../services/reservationApprovalService');
-
-// Setup multer for file uploads to public/comprobantes
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    const dir = COMPROBANTES_DIR;
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    cb(null, dir);
-  },
-  filename: function (req, file, cb) {
-    // Use timestamp + original name to avoid conflicts
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    const ext = path.extname(file.originalname);
-    cb(null, file.fieldname + '-' + uniqueSuffix + ext);
-  }
-});
-const upload = multer({
-  storage,
-  limits: { fileSize: MAX_RECEIPT_BYTES, files: 1 },
-  fileFilter: (_req, file, cb) => cb(null, ALLOWED_MIME_TYPES.has(file.mimetype))
-});
+const {
+  authorizePayment, approveReservation, rejectReservation, cancelReservation
+} = require('../services/reservationApprovalService');
 
 /**
  * @swagger
@@ -425,32 +401,44 @@ router.post('/:id/reject',
  *     security:
  *       - bearerAuth: []
  */
-// POST / - create new reservation with optional comprobante upload
+// POST / - crea una solicitud administrativa que seguirá el mismo flujo de autorización.
 router.post('/', 
   authenticateToken,
-  upload.single('comprobante'),
   sanitizeRequestData,
   validateAdminReservation,
   logAdminActivity('create_reservation'),
   async (req, res) => {
   try {
     const { cabin_id, user_id, start_date, end_date, status, total_price, number_of_people } = req.body;
-    let comprobante_nombre_archivo = null;
-    
-    if (req.file) {
-      comprobante_nombre_archivo = req.file.filename;
-      logger.info('Comprobante subido con nueva reserva', {
-        filename: comprobante_nombre_archivo,
-        size: req.file.size,
-        adminUser: req.user.username
+    if (status !== 'pendiente_autorizacion') {
+      return res.status(409).json({
+        success: false,
+        message: 'Las reservas nuevas deben iniciar esperando autorización',
+        code: 'INVALID_INITIAL_STATUS'
       });
     }
-    
+
+    const cabins = await db.runQuery('SELECT capacity, is_active FROM Cabins WHERE cabin_id = ?', [cabin_id]);
+    if (!cabins.length || Number(cabins[0].is_active) === 0) {
+      return res.status(404).json({ success: false, message: 'Cabaña no encontrada o inactiva', code: 'CABIN_NOT_AVAILABLE' });
+    }
+    if (number_of_people > Number(cabins[0].capacity)) {
+      return res.status(409).json({
+        success: false,
+        message: `La cabaña permite un máximo de ${cabins[0].capacity} personas`,
+        code: 'CABIN_CAPACITY_EXCEEDED'
+      });
+    }
+    const users = await db.runQuery('SELECT user_id FROM Users WHERE user_id = ?', [user_id]);
+    if (!users.length) return res.status(404).json({ success: false, message: 'Huésped no encontrado', code: 'USER_NOT_FOUND' });
+
     const sql = `
-      INSERT INTO Reservations (cabin_id, user_id, start_date, end_date, status, total_price, comprobante_nombre_archivo, personas)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO Reservations (cabin_id, user_id, start_date, end_date, status, total_price, personas)
+      VALUES (?, ?, ?, ?, 'pendiente_autorizacion', ?, ?)
     `;
-    const result = await db.runExecute(sql, [cabin_id, user_id, start_date, end_date, status, total_price, comprobante_nombre_archivo, number_of_people]);
+    const result = await db.runExecute(sql, [cabin_id, user_id, start_date, end_date, total_price, number_of_people]);
+    const confirmationCode = `VJ-${String(result.lastID).padStart(6, '0')}`;
+    await db.runExecute('UPDATE Reservations SET confirmation_code = ? WHERE reservation_id = ?', [confirmationCode, result.lastID]);
     
     logger.info('Reserva administrativa creada exitosamente', {
       reservationId: result.lastID,
@@ -471,10 +459,11 @@ router.post('/',
         user_id,
         start_date,
         end_date,
-        status,
+        status: 'pendiente_autorizacion',
+        confirmation_code: confirmationCode,
         total_price,
         number_of_people,
-        comprobante_uploaded: !!comprobante_nombre_archivo
+        comprobante_uploaded: false
       }
     });
   } catch (error) {
@@ -484,19 +473,19 @@ router.post('/',
       adminUser: req.user?.username
     });
     
-    res.status(500).json({ 
+    const conflict = String(error.message || '').includes('CABIN_DATE_CONFLICT');
+    res.status(conflict ? 409 : 500).json({
       success: false, 
-      message: 'Error creando reserva',
-      code: 'CREATION_ERROR'
+      message: conflict ? 'La cabaña ya está comprometida para esas fechas' : 'Error creando reserva',
+      code: conflict ? 'CABIN_DATE_CONFLICT' : 'CREATION_ERROR'
     });
   }
 });
 
-// PUT /:id - update reservation with optional comprobante upload
+// PUT /:id - edita datos; el estado solo cambia mediante las acciones dedicadas.
 router.put('/:id', 
   authenticateToken,
   validateNumericId('id'),
-  upload.single('comprobante'),
   sanitizeRequestData,
   validateAdminReservation,
   logAdminActivity('update_reservation'),
@@ -504,34 +493,37 @@ router.put('/:id',
   try {
     const reservationId = req.params.id;
     const { cabin_id, user_id, start_date, end_date, status, total_price, number_of_people } = req.body;
-    let comprobante_nombre_archivo = null;
-    
-    if (req.file) {
-      comprobante_nombre_archivo = req.file.filename;
-      logger.info('Comprobante actualizado en reserva', {
-        reservationId,
-        filename: comprobante_nombre_archivo,
-        size: req.file.size,
-        adminUser: req.user.username
+    const existing = await db.runQuery('SELECT status FROM Reservations WHERE reservation_id = ?', [reservationId]);
+    if (!existing.length) {
+      return res.status(404).json({ success: false, message: 'Reserva no encontrada', code: 'RESERVATION_NOT_FOUND' });
+    }
+    if (status !== existing[0].status) {
+      return res.status(409).json({
+        success: false,
+        message: 'Usa las acciones Autorizar, Confirmar, Rechazar o Cancelar para cambiar el estado',
+        code: 'WORKFLOW_STATUS_CHANGE_NOT_ALLOWED',
+        currentStatus: existing[0].status
       });
     }
 
-    // Build SQL dynamically to update comprobante_nombre_archivo only if file uploaded
-    let sql = `
-      UPDATE Reservations
-      SET cabin_id = ?, user_id = ?, start_date = ?, end_date = ?, status = ?, total_price = ?, personas = ?
-    `;
-    const params = [cabin_id, user_id, start_date, end_date, status, total_price, number_of_people];
-
-    if (comprobante_nombre_archivo) {
-      sql += `, comprobante_nombre_archivo = ?`;
-      params.push(comprobante_nombre_archivo);
+    const cabins = await db.runQuery('SELECT capacity, is_active FROM Cabins WHERE cabin_id = ?', [cabin_id]);
+    if (!cabins.length || Number(cabins[0].is_active) === 0) {
+      return res.status(404).json({ success: false, message: 'Cabaña no encontrada o inactiva', code: 'CABIN_NOT_AVAILABLE' });
+    }
+    if (number_of_people > Number(cabins[0].capacity)) {
+      return res.status(409).json({
+        success: false,
+        message: `La cabaña permite un máximo de ${cabins[0].capacity} personas`,
+        code: 'CABIN_CAPACITY_EXCEEDED'
+      });
     }
 
-    sql += ` WHERE reservation_id = ?`;
-    params.push(reservationId);
-
-    const result = await db.runExecute(sql, params);
+    const sql = `
+      UPDATE Reservations
+      SET cabin_id = ?, user_id = ?, start_date = ?, end_date = ?, total_price = ?, personas = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE reservation_id = ?
+    `;
+    const result = await db.runExecute(sql, [cabin_id, user_id, start_date, end_date, total_price, number_of_people, reservationId]);
     
     if (result.changes === 0) {
       logger.warn('Intento de actualizar reserva inexistente', {
@@ -559,7 +551,7 @@ router.put('/:id',
       data: {
         reservation_id: reservationId,
         changes: result.changes,
-        comprobante_updated: !!comprobante_nombre_archivo
+        comprobante_updated: false
       }
     });
   } catch (error) {
@@ -569,15 +561,16 @@ router.put('/:id',
       adminUser: req.user?.username
     });
     
-    res.status(500).json({ 
+    const conflict = String(error.message || '').includes('CABIN_DATE_CONFLICT');
+    res.status(conflict ? 409 : 500).json({
       success: false, 
-      message: 'Error actualizando reserva',
-      code: 'UPDATE_ERROR'
+      message: conflict ? 'La cabaña ya está comprometida para esas fechas' : 'Error actualizando reserva',
+      code: conflict ? 'CABIN_DATE_CONFLICT' : 'UPDATE_ERROR'
     });
   }
 });
 
-// DELETE /:id - delete reservation
+// DELETE /:id - conserva el historial y marca la reserva como cancelada.
 router.delete('/:id', 
   authenticateToken,
   validateNumericId('id'),
@@ -585,40 +578,20 @@ router.delete('/:id',
   async (req, res) => {
   try {
     const reservationId = req.params.id;
-    
-    // Verificar que la reserva existe antes de eliminar
-    const checkSql = `SELECT reservation_id, status FROM Reservations WHERE reservation_id = ?`;
-    const existingReservation = await db.runQuery(checkSql, [reservationId]);
-    
-    if (existingReservation.length === 0) {
-      logger.warn('Intento de eliminar reserva inexistente', {
-        reservationId,
-        adminUser: req.user.username
-      });
-      
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Reserva no encontrada',
-        code: 'RESERVATION_NOT_FOUND'
+    const result = await cancelReservation(reservationId, req.user.adminId);
+    if (!result.ok) {
+      return res.status(result.status).json({
+        success: false, code: result.code, currentStatus: result.currentStatus
       });
     }
-    
-    const sql = `DELETE FROM Reservations WHERE reservation_id = ?`;
-    const result = await db.runExecute(sql, [reservationId]);
-    
-    logger.warn('Reserva eliminada por administrador', {
-      reservationId,
-      previousStatus: existingReservation[0].status,
-      adminUser: req.user.username
-    });
-    
     res.json({ 
       success: true,
-      message: 'Reserva eliminada exitosamente',
+      message: result.alreadyProcessed ? 'La reserva ya estaba cancelada' : 'Reserva cancelada',
       data: {
         reservation_id: reservationId,
-        changes: result.changes
-      }
+        status: 'cancelada'
+      },
+      notificationSent: result.reservation.notification_status === 'sent'
     });
   } catch (error) {
     logger.error('Error eliminando reserva administrativa', { 
@@ -629,8 +602,8 @@ router.delete('/:id',
     
     res.status(500).json({ 
       success: false, 
-      message: 'Error eliminando reserva',
-      code: 'DELETE_ERROR'
+      message: 'Error cancelando reserva',
+      code: 'CANCELLATION_ERROR'
     });
   }
 });

@@ -226,6 +226,28 @@ describe('database bootstrap', () => {
     expect(authorized[0].payment_authorized_by).toBe(99);
     expect(authorized[0].payment_authorized_at).toBeTruthy();
 
+    await query(dbPath, `UPDATE Reservations SET payment_due_at = datetime('now', '-1 minute') WHERE reservation_id = 1`);
+    const expiredReceiptScript = `
+      const { guardarComprobante } = require('./services/comprobanteService');
+      const { closeDatabase } = require('./db');
+      (async () => {
+        let expired = false;
+        try {
+          await guardarComprobante(1, Buffer.from('pdf-vencido'), 'application/pdf', 'vencido.pdf');
+        } catch (error) {
+          expired = error.code === 'PAYMENT_WINDOW_EXPIRED';
+        }
+        if (!expired) process.exitCode = 10;
+        await closeDatabase();
+      })().catch((error) => { console.error(error); process.exit(1); });
+    `;
+    execFileSync(process.execPath, ['-e', expiredReceiptScript], { cwd: path.join(__dirname, '..'), env });
+    expect((await query(dbPath, `SELECT status, comprobante_nombre_archivo FROM Reservations WHERE reservation_id = 1`))[0])
+      .toEqual({ status: 'expirada', comprobante_nombre_archivo: null });
+
+    await query(dbPath, `UPDATE Reservations SET status = 'esperando_pago', payment_due_at = datetime('now', '+1 hour')
+      WHERE reservation_id = 1`);
+
     const receiptScript = `
       const { guardarComprobante } = require('./services/comprobanteService');
       const { closeDatabase } = require('./db');
@@ -252,6 +274,29 @@ describe('database bootstrap', () => {
     }));
     expect(approved[0].reviewed_at).toBeTruthy();
 
+    await query(dbPath, `INSERT INTO Reservations
+      (user_id, cabin_id, start_date, end_date, status, total_price, personas, confirmation_code, created_at)
+      VALUES (1, 2, '2026-10-01', '2026-10-02', 'pendiente_autorizacion', 1500, 2, 'VJ-000002', datetime('now', '-2 days'))`);
+    await query(dbPath, `INSERT INTO Reservations
+      (user_id, cabin_id, start_date, end_date, status, total_price, personas, confirmation_code, payment_due_at)
+      VALUES (1, 3, '2026-10-03', '2026-10-04', 'esperando_pago', 1500, 2, 'VJ-000003', datetime('now', '-1 minute'))`);
+    const cleanupScript = `
+      const cleanup = require('./services/reservaCleanupService');
+      const { closeDatabase } = require('./db');
+      (async () => {
+        const result = await cleanup.eliminarReservasExpiradas();
+        if (result.changes !== 1) process.exitCode = 11;
+        await closeDatabase();
+      })().catch((error) => { console.error(error); process.exit(1); });
+    `;
+    execFileSync(process.execPath, ['-e', cleanupScript], { cwd: path.join(__dirname, '..'), env });
+    const cleanupStates = await query(dbPath, `SELECT confirmation_code, status FROM Reservations
+      WHERE confirmation_code IN ('VJ-000002', 'VJ-000003') ORDER BY confirmation_code`);
+    expect(cleanupStates).toEqual([
+      { confirmation_code: 'VJ-000002', status: 'pendiente_autorizacion' },
+      { confirmation_code: 'VJ-000003', status: 'expirada' }
+    ]);
+
     const analyticsScript = `
       const analytics = require('./services/analyticsService');
       const { closeDatabase } = require('./db');
@@ -263,5 +308,18 @@ describe('database bootstrap', () => {
       })().catch((error) => { console.error(error); process.exit(1); });
     `;
     execFileSync(process.execPath, ['-e', analyticsScript], { cwd: path.join(__dirname, '..'), env });
+
+    const cancelScript = `
+      const { cancelReservation } = require('./services/reservationApprovalService');
+      const { closeDatabase } = require('./db');
+      (async () => {
+        const result = await cancelReservation(1, 99, { notify: async () => ({ ok: true }) });
+        if (!result.ok || result.reservation.status !== 'cancelada') process.exitCode = 12;
+        await closeDatabase();
+      })().catch((error) => { console.error(error); process.exit(1); });
+    `;
+    execFileSync(process.execPath, ['-e', cancelScript], { cwd: path.join(__dirname, '..'), env });
+    const cancelled = await query(dbPath, `SELECT reservation_id, status, notification_status FROM Reservations WHERE reservation_id = 1`);
+    expect(cancelled).toEqual([{ reservation_id: 1, status: 'cancelada', notification_status: 'sent' }]);
   });
 });

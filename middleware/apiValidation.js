@@ -117,9 +117,13 @@ const validateAdminLogin = (req, res, next) => {
 const validateAdminReservation = (req, res, next) => {
   try {
     const { cabin_id, user_id, start_date, end_date, status, total_price, number_of_people } = req.body;
+    const cabinId = Number(cabin_id);
+    const userId = Number(user_id);
+    const totalPrice = Number(total_price);
+    const people = Number(number_of_people);
     
     // Validar cabin_id
-    if (!cabin_id || typeof cabin_id !== 'number' || cabin_id <= 0) {
+    if (!Number.isInteger(cabinId) || cabinId <= 0) {
       return res.status(400).json({
         success: false,
         message: 'ID de cabaña debe ser un número positivo',
@@ -128,7 +132,7 @@ const validateAdminReservation = (req, res, next) => {
     }
 
     // Validar user_id
-    if (!user_id || typeof user_id !== 'number' || user_id <= 0) {
+    if (!Number.isInteger(userId) || userId <= 0) {
       return res.status(400).json({
         success: false,
         message: 'ID de usuario debe ser un número positivo',
@@ -202,7 +206,7 @@ const validateAdminReservation = (req, res, next) => {
     }
 
     // Validar total_price
-    if (!total_price || typeof total_price !== 'number' || total_price <= 0) {
+    if (!Number.isFinite(totalPrice) || totalPrice <= 0) {
       return res.status(400).json({
         success: false,
         message: 'Precio total debe ser un número positivo',
@@ -211,7 +215,7 @@ const validateAdminReservation = (req, res, next) => {
     }
 
     // Validar number_of_people
-    if (!number_of_people || typeof number_of_people !== 'number' || number_of_people < 1 || number_of_people > 10) {
+    if (!Number.isInteger(people) || people < 1 || people > 10) {
       return res.status(400).json({
         success: false,
         error: 'Máximo 10 personas permitidas por reserva'
@@ -219,13 +223,13 @@ const validateAdminReservation = (req, res, next) => {
     }
 
     // Sanitizar datos
-    req.body.cabin_id = cabin_id;
-    req.body.user_id = user_id;
+    req.body.cabin_id = cabinId;
+    req.body.user_id = userId;
     req.body.start_date = start_date.trim();
     req.body.end_date = end_date.trim();
     req.body.status = status.trim();
-    req.body.total_price = total_price;
-    req.body.number_of_people = number_of_people;
+    req.body.total_price = totalPrice;
+    req.body.number_of_people = people;
     
     logger.info('Validación de reserva administrativa exitosa', {
       adminUser: req.user?.username,

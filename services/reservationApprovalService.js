@@ -60,6 +60,31 @@ async function notifyGuest(reservation, decision, providedClient = null) {
     });
   }
 
+  if (decision === 'payment_expired') {
+    return sendReplyButtons(client, reservation.phone_number, {
+      header: 'Plazo de pago vencido',
+      body: `⌛ La solicitud *${reservation.confirmation_code}* venció porque no recibimos el comprobante dentro del plazo autorizado.\n\n` +
+        'No se realizó ningún cargo. Puedes iniciar una nueva solicitud para consultar disponibilidad actualizada.',
+      footer: 'Villas Julie',
+      buttons: [
+        { id: 'reservation_start', title: 'Nueva reserva' },
+        { id: 'main_menu', title: 'Menú principal' }
+      ]
+    });
+  }
+
+  if (decision === 'cancelled') {
+    return sendReplyButtons(client, reservation.phone_number, {
+      header: 'Reserva cancelada',
+      body: `La reserva *${reservation.confirmation_code}* fue cancelada.\n\n` +
+        `Alojamiento: *${reservation.cabin_name}*\n` +
+        `Fechas: *${reservation.start_date} al ${reservation.end_date}*\n\n` +
+        'Los pagos y anticipos realizados no son reembolsables. Si necesitas asistencia, responde por este mismo chat.',
+      footer: 'Villas Julie',
+      buttons: [{ id: 'main_menu', title: 'Menú principal' }]
+    });
+  }
+
   return sendReplyButtons(client, reservation.phone_number, {
     header: 'Solicitud revisada',
     body: `No pudimos aprobar la solicitud *${reservation.confirmation_code}*.\n\n` +
@@ -242,4 +267,47 @@ async function rejectReservation(id, adminId, reason, options = {}) {
   return { ok: true, reservation };
 }
 
-module.exports = { authorizePayment, approveReservation, rejectReservation, getReservationForReview, trackingCode, notifyGuest };
+async function cancelReservation(id, adminId, options = {}) {
+  const current = await getReservationForReview(id);
+  if (!current) return { ok: false, status: 404, code: 'RESERVATION_NOT_FOUND' };
+  if (['cancelada', 'cancelado'].includes(current.status)) {
+    return { ok: true, alreadyProcessed: true, reservation: current };
+  }
+  const cancellable = ['pendiente_autorizacion', 'esperando_pago', 'pendiente_verificacion', 'confirmada', 'confirmado'];
+  if (!cancellable.includes(current.status)) {
+    return { ok: false, status: 409, code: 'INVALID_RESERVATION_STATUS', currentStatus: current.status };
+  }
+  const code = current.confirmation_code || trackingCode(id);
+  const result = await runExecute(`UPDATE Reservations
+    SET status = 'cancelada', confirmation_code = ?, reviewed_at = CURRENT_TIMESTAMP,
+        reviewed_by = ?, notification_status = 'pending', updated_at = CURRENT_TIMESTAMP
+    WHERE reservation_id = ? AND status IN ('pendiente_autorizacion', 'esperando_pago', 'pendiente_verificacion', 'confirmada', 'confirmado')`,
+  [code, adminId, id]);
+  if (result.changes !== 1) return { ok: false, status: 409, code: 'ALREADY_PROCESSED' };
+
+  const reservation = await getReservationForReview(id);
+  try {
+    await (options.notify || notifyGuest)(reservation, 'cancelled');
+    await setNotificationStatus(id, 'sent');
+    reservation.notification_status = 'sent';
+  } catch (error) {
+    await notificationQueue.enqueue({
+      recipient: reservation.phone_number,
+      kind: 'guest_decision',
+      payload: { decision: 'cancelled' },
+      reservationId: id,
+      idempotencyKey: `reservation:${id}:cancelled`
+    });
+    await setNotificationStatus(id, 'queued');
+    reservation.notification_status = 'queued';
+    logger.error('Reserva cancelada; el aviso al huésped quedó en cola', {
+      reservationId: id, code: error.response?.data?.error?.code
+    });
+  }
+  return { ok: true, reservation };
+}
+
+module.exports = {
+  authorizePayment, approveReservation, rejectReservation, cancelReservation,
+  getReservationForReview, trackingCode, notifyGuest
+};

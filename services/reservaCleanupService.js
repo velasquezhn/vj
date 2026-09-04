@@ -4,6 +4,10 @@
 
 const { runExecute, runQuery } = require('../db');
 const logger = require('../config/logger');
+const { getReservationForReview, notifyGuest } = require('./reservationApprovalService');
+const notificationQueue = require('./notificationQueueService');
+const { normalizeRecipient } = require('./whatsappCloudService');
+const { establecerEstado } = require('./stateService');
 
 class ReservaCleanupService {
   constructor() {
@@ -11,8 +15,6 @@ class ReservaCleanupService {
     this.isRunning = false;
     // Intervalo de verificación: cada 30 minutos
     this.CLEANUP_INTERVAL = 30 * 60 * 1000; // 30 minutos en millisegundos
-    // Tiempo límite: 24 horas
-    this.TIEMPO_LIMITE_HORAS = 24;
   }
 
   /**
@@ -26,7 +28,6 @@ class ReservaCleanupService {
 
     logger.info('🧹 Iniciando servicio de limpieza automática de reservas pendientes');
     logger.info(`   - Intervalo de verificación: ${this.CLEANUP_INTERVAL / 60000} minutos`);
-    logger.info(`   - Tiempo límite: ${this.TIEMPO_LIMITE_HORAS} horas`);
 
     // Ejecutar limpieza inmediatamente
     this.ejecutarLimpieza();
@@ -72,18 +73,14 @@ class ReservaCleanupService {
         return;
       }
 
-      logger.info(`⚠️ Se marcarán como expiradas ${reservasAExpirar.length} reservas:`);
-      reservasAExpirar.forEach(reserva => {
-        const horasExpiradas = this.calcularHorasExpiradas(reserva.created_at);
-        logger.info(`   - ID: ${reserva.reservation_id} | Usuario: ${reserva.guest_name || 'Sin nombre'} | Expirada hace: ${horasExpiradas.toFixed(1)}h`);
-      });
+      logger.info('Se marcarán pagos como vencidos', { total: reservasAExpirar.length });
 
       const resultado = await this.eliminarReservasExpiradas();
       
       if (resultado.changes > 0) {
         logger.info(`✅ Marcadas como expiradas ${resultado.changes} reservas pendientes`);
         
-        await this.notificarLimpieza(resultado.changes, reservasAExpirar);
+        await this.notificarExpiraciones(reservasAExpirar);
       } else {
         logger.info('ℹ️ No se expiraron reservas (posiblemente ya fueron procesadas)');
       }
@@ -102,20 +99,12 @@ class ReservaCleanupService {
              u.name as guest_name, u.phone_number
       FROM Reservations r
       LEFT JOIN Users u ON r.user_id = u.user_id
-      WHERE (
-        r.status = 'pendiente_autorizacion'
-        AND r.created_at IS NOT NULL
-        AND julianday('now') - julianday(r.created_at) > ?
-      ) OR (
-        r.status = 'esperando_pago'
+      WHERE r.status = 'esperando_pago'
         AND r.payment_due_at IS NOT NULL
         AND datetime('now') > datetime(r.payment_due_at)
-      )
-      ORDER BY r.created_at ASC
+      ORDER BY r.payment_due_at ASC
     `;
-    
-    const limite = this.TIEMPO_LIMITE_HORAS / 24; // Convertir horas a días para julianday
-    return await runQuery(sql, [limite]);
+    return runQuery(sql);
   }
 
   /**
@@ -125,49 +114,50 @@ class ReservaCleanupService {
   async eliminarReservasExpiradas() {
     const sql = `
       UPDATE Reservations
-      SET status = 'expirada', updated_at = datetime('now')
-      WHERE (
-        status = 'pendiente_autorizacion'
-        AND created_at IS NOT NULL
-        AND julianday('now') - julianday(created_at) > ?
-      ) OR (
-        status = 'esperando_pago'
+      SET status = 'expirada', notification_status = 'pending', updated_at = datetime('now')
+      WHERE status = 'esperando_pago'
         AND payment_due_at IS NOT NULL
         AND datetime('now') > datetime(payment_due_at)
-      )
     `;
-    
-    const limite = this.TIEMPO_LIMITE_HORAS / 24;
-    return await runExecute(sql, [limite]);
+    return runExecute(sql);
   }
 
-  /**
-   * Calcula cuántas horas han pasado desde la creación
-   */
-  calcularHorasExpiradas(created_at) {
-    if (!created_at) return 0;
-    
-    const ahora = new Date();
-    const fechaCreacion = new Date(created_at);
-    const diferenciaMs = ahora - fechaCreacion;
-    return diferenciaMs / (1000 * 60 * 60); // Convertir a horas
-  }
-
-  /**
-   * Notifica a los administradores sobre la limpieza (opcional)
-   */
-  async notificarLimpieza(cantidad, reservasExpiradas) {
-    try {
-      // Solo registrar en logs por ahora
-      // En el futuro se podría enviar notificación al grupo de administradores
-      logger.info(`📊 Resumen de limpieza: ${cantidad} reservas expiradas`);
-      
-      if (cantidad > 5) {
-        logger.warn(`⚠️ Se expiraron ${cantidad} reservas - número alto, revisar si es normal`);
+  async notificarExpiraciones(reservasExpiradas) {
+    for (const item of reservasExpiradas) {
+      const reservation = await getReservationForReview(item.reservation_id);
+      if (!reservation || reservation.status !== 'expirada') continue;
+      const phone = normalizeRecipient(reservation.phone_number);
+      if (phone) {
+        try {
+          await establecerEstado(`${phone}@s.whatsapp.net`, 'MENU_PRINCIPAL', {});
+        } catch (error) {
+          logger.warn('No se pudo reiniciar el menú del huésped con pago vencido', {
+            reservationId: reservation.reservation_id,
+            error: error.message
+          });
+        }
       }
-    } catch (error) {
-      logger.error('Error notificando limpieza:', error);
+      try {
+        await notifyGuest(reservation, 'payment_expired');
+        await runExecute(`UPDATE Reservations SET notification_status = 'sent', updated_at = CURRENT_TIMESTAMP
+          WHERE reservation_id = ?`, [reservation.reservation_id]);
+      } catch (error) {
+        await notificationQueue.enqueue({
+          recipient: reservation.phone_number,
+          kind: 'guest_decision',
+          payload: { decision: 'payment_expired' },
+          reservationId: reservation.reservation_id,
+          idempotencyKey: `reservation:${reservation.reservation_id}:payment_expired`
+        });
+        await runExecute(`UPDATE Reservations SET notification_status = 'queued', updated_at = CURRENT_TIMESTAMP
+          WHERE reservation_id = ?`, [reservation.reservation_id]);
+        logger.error('Pago vencido; el aviso al huésped quedó en cola', {
+          reservationId: reservation.reservation_id,
+          code: error.response?.data?.error?.code
+        });
+      }
     }
+    logger.info('Limpieza de pagos vencidos completada', { total: reservasExpiradas.length });
   }
 
   /**
@@ -212,7 +202,6 @@ class ReservaCleanupService {
     return {
       ejecutandose: this.isRunning,
       intervalo_minutos: this.CLEANUP_INTERVAL / 60000,
-      tiempo_limite_horas: this.TIEMPO_LIMITE_HORAS,
       proximo_cleanup: this.isRunning ? 
         new Date(Date.now() + this.CLEANUP_INTERVAL).toISOString() : 
         'No programado'

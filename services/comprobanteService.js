@@ -16,6 +16,27 @@ async function guardarComprobante(reservaId, buffer, mimetype, nombreArchivo) {
       throw new Error('Tamaño de comprobante inválido');
     }
     if (!ALLOWED_MIME_TYPES.has(mimetype)) throw new Error('Tipo de comprobante no permitido');
+    let current = await Reserva.findById(reservaId);
+    if (!current) {
+      const error = new Error('Reserva no encontrada');
+      error.code = 'RESERVATION_NOT_FOUND';
+      throw error;
+    }
+    if (current.status === 'esperando_pago' && await Reserva.expirePaymentWindow(reservaId)) {
+      const error = new Error('El plazo para enviar el comprobante venció');
+      error.code = 'PAYMENT_WINDOW_EXPIRED';
+      throw error;
+    }
+    if (current.status === 'pendiente_verificacion') {
+      const error = new Error('El comprobante ya fue recibido y está en revisión');
+      error.code = 'RECEIPT_ALREADY_RECEIVED';
+      throw error;
+    }
+    if (current.status !== 'esperando_pago') {
+      const error = new Error('El comprobante no está habilitado para esta reserva');
+      error.code = 'RECEIPT_NOT_ALLOWED';
+      throw error;
+    }
     const safeName = path.basename(nombreArchivo || 'comprobante.bin').replace(/[^a-zA-Z0-9._-]/g, '_');
     // Save file to disk
     const filePath = path.join(COMPROBANTES_DIR, `${reservaId}-${Date.now()}-${safeName}`);
@@ -26,8 +47,12 @@ async function guardarComprobante(reservaId, buffer, mimetype, nombreArchivo) {
     const resultado = await Reserva.updateComprobante(reservaId, null, null, relativePath);
     if (!resultado) {
       await fs.promises.unlink(filePath).catch(() => undefined);
-      const error = new Error('El comprobante no está habilitado para esta reserva');
-      error.code = 'RECEIPT_NOT_ALLOWED';
+      current = await Reserva.findById(reservaId);
+      const expired = await Reserva.expirePaymentWindow(reservaId);
+      const error = new Error(expired || current?.status === 'expirada'
+        ? 'El plazo para enviar el comprobante venció'
+        : 'El comprobante no está habilitado para esta reserva');
+      error.code = expired || current?.status === 'expirada' ? 'PAYMENT_WINDOW_EXPIRED' : 'RECEIPT_NOT_ALLOWED';
       throw error;
     }
     const { runExecute } = require('../db');
@@ -39,7 +64,9 @@ async function guardarComprobante(reservaId, buffer, mimetype, nombreArchivo) {
     );
     return resultado;
   } catch (error) {
-    if (error.code !== 'RECEIPT_NOT_ALLOWED') console.error('Error guardando comprobante:', error);
+    if (!['RECEIPT_NOT_ALLOWED', 'RECEIPT_ALREADY_RECEIVED', 'PAYMENT_WINDOW_EXPIRED'].includes(error.code)) {
+      console.error('Error guardando comprobante:', error);
+    }
     throw error;
   }
 }

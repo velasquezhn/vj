@@ -20,12 +20,21 @@ async function findByPhoneAndStatus(phone, status) {
 }
 
 async function updateComprobante(id, buffer, contentType, nombreArchivo) {
-  // Now nombreArchivo is the relative file path string, buffer and contentType are null
+  // La fecha límite se valida dentro de la escritura para evitar aceptar pagos vencidos.
   const sql = `UPDATE ${TABLE_NAME} SET status = ?, comprobante_nombre_archivo = ?, updated_at = CURRENT_TIMESTAMP
-    WHERE reservation_id = ? AND status = 'esperando_pago'`;
+    WHERE reservation_id = ? AND status = 'esperando_pago'
+      AND (payment_due_at IS NULL OR datetime('now') <= datetime(payment_due_at))`;
   const params = ['pendiente_verificacion', nombreArchivo, id];
   const result = await runExecute(sql, params);
   return result.changes === 1 ? findById(id) : null;
+}
+
+async function expirePaymentWindow(id) {
+  const result = await runExecute(`UPDATE ${TABLE_NAME}
+    SET status = 'expirada', notification_status = NULL, updated_at = CURRENT_TIMESTAMP
+    WHERE reservation_id = ? AND status = 'esperando_pago'
+      AND payment_due_at IS NOT NULL AND datetime('now') > datetime(payment_due_at)`, [id]);
+  return result.changes === 1;
 }
 
 async function updateEstado(id, nuevoEstado) {
@@ -49,6 +58,7 @@ module.exports = {
   findById,
   findByPhoneAndStatus,
   updateComprobante,
+  expirePaymentWindow,
   updateEstado,
   eliminarComprobante
 };

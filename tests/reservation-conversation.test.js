@@ -15,6 +15,8 @@ const { establecerEstado } = require('../services/stateService');
 const { calcularPrecioTotal } = require('../services/reservaPriceService');
 const { sendReplyButtons } = require('../services/whatsappInteractiveService');
 const { enviarMenuPrincipal } = require('../services/messagingService');
+const { guardarComprobante } = require('../services/comprobanteService');
+const { descargarMedia } = require('../utils/mediaUtils');
 
 describe('flujo conversacional de reserva', () => {
   const sender = '50499990000@s.whatsapp.net';
@@ -25,6 +27,7 @@ describe('flujo conversacional de reserva', () => {
     bot = { sendMessage: jest.fn().mockResolvedValue({ ok: true }) };
     sendReplyButtons.mockResolvedValue({ ok: true });
     calcularPrecioTotal.mockReturnValue(4500);
+    descargarMedia.mockResolvedValue({ buffer: Buffer.from('media'), mimetype: 'image/jpeg', nombreArchivo: 'pago.jpg' });
   });
 
   test('rechaza fechas inválidas con una sola respuesta y conserva el paso', async () => {
@@ -66,5 +69,22 @@ describe('flujo conversacional de reserva', () => {
     await handleReservaState(bot, sender, 'no', ESTADOS_RESERVA.CONDICIONES, {}, {});
     expect(enviarMenuPrincipal).toHaveBeenCalledTimes(1);
     expect(bot.sendMessage).not.toHaveBeenCalled();
+  });
+
+  test('explica el vencimiento y cierra el paso de comprobante', async () => {
+    guardarComprobante.mockRejectedValueOnce(Object.assign(new Error('vencido'), { code: 'PAYMENT_WINDOW_EXPIRED' }));
+    await handleReservaState(bot, sender, '', ESTADOS_RESERVA.ESPERANDO_PAGO, {
+      reservaId: 7, confirmationCode: 'VJ-000007'
+    }, { imageMessage: { id: 'media' } });
+    expect(bot.sendMessage.mock.calls[0][1].text).toContain('PLAZO DE PAGO VENCIÓ');
+    expect(establecerEstado).toHaveBeenCalledWith(sender, 'MENU_PRINCIPAL', {});
+  });
+
+  test('un comprobante duplicado conserva la espera de revisión', async () => {
+    guardarComprobante.mockRejectedValueOnce(Object.assign(new Error('duplicado'), { code: 'RECEIPT_ALREADY_RECEIVED' }));
+    const data = { reservaId: 8, confirmationCode: 'VJ-000008' };
+    await handleReservaState(bot, sender, '', ESTADOS_RESERVA.ESPERANDO_PAGO, data, { imageMessage: { id: 'media' } });
+    expect(bot.sendMessage.mock.calls[0][1].text).toContain('Ya recibimos el comprobante');
+    expect(establecerEstado).toHaveBeenCalledWith(sender, ESTADOS_RESERVA.ESPERANDO_CONFIRMACION, data);
   });
 });

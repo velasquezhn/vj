@@ -89,11 +89,13 @@ Reglas operativas vigentes:
 - Solicitudes de asistencia recibidas 24/7; horario de oficina de 8:00 a. m. a 4:00 p. m.
 - Conservación prevista de datos operativos: 2 años.
 
+Las 24 horas comienzan exactamente cuando un administrador autoriza el pago; una solicitud que todavía espera revisión administrativa no expira por ese plazo. Al vencer, el sistema rechaza atómicamente cualquier comprobante tardío, conserva la reserva como `expirada`, reinicia el menú del huésped y le envía un aviso. Si Meta no responde, el aviso queda en la cola persistente.
+
 La base de datos impide de forma atómica crear dos reservas activas superpuestas para la misma cabaña. Al solicitar modificación, asistencia o cancelación, los administradores autorizados reciben un aviso individual con enlace al chat privado del huésped.
 
 Antes de autorizar el primer pago, configure **Configuración > Pagos y anticipo** en el panel. El porcentaje predeterminado es 50 %. Registre una cuenta por línea con banco, tipo, número y titular. El sistema bloquea la autorización si no hay cuentas, calcula el anticipo y el saldo, y envía estas instrucciones al huésped sin registrar datos bancarios en el código ni en los logs.
 
-- En el panel: abrir **Reservas**. Primero pulsar **Autorizar pago**; cuando llegue el archivo, abrir el comprobante y pulsar **Confirmar** o **Rechazar**.
+- En el panel: abrir **Reservas**. Primero pulsar **Autorizar pago**; cuando llegue el archivo, abrir el comprobante y pulsar **Confirmar** o **Rechazar**. **Cancelar** conserva el registro y notifica al huésped; nunca borra físicamente la reserva.
 - En WhatsApp: cada número activo registrado en **Configuración > Administradores de WhatsApp** recibe primero **Autorizar pago / Rechazar** y, después del comprobante, **Confirmar / Rechazar**. Como respaldo admite `/aprobar VJ-000001`, `/rechazar VJ-000001 motivo` y `/reserva VJ-000001`; `/aprobar` ejecuta solamente la etapa que corresponda al estado actual.
 
 Los números se escriben con código de país y solo dígitos (por ejemplo, `504XXXXXXXX`). Pueden editarse, desactivarse o eliminarse sin modificar Railway. Cada administrador debe enviar `/admin` al número de Villas Julie antes de una demostración; `/cliente` permite volver a probar el flujo como huésped.
@@ -171,4 +173,4 @@ En Meta complete “Verify and save”, envíe `hola` desde un número permitido
 
 Las rutas administrativas usan JWT mediante una cookie `HttpOnly`. En el runtime HTTPS la cookie se marca `Secure` y `SameSite=None`; el panel envía credenciales CORS y la cabecera `X-VJ-Client` como protección adicional contra solicitudes externas. Durante la transición también se acepta el encabezado `Authorization: Bearer` para no interrumpir sesiones QA ya abiertas. Cerrar sesión y cambiar la contraseña invalidan la sesión del servidor y eliminan la cookie.
 
-Confirme o cancele con `PUT /admin/reservations/:id`; los comandos de grupo fueron eliminados. Rote todos los secretos que hayan estado en el historial antes de publicar el repositorio saneado.
+Los cambios ordinarios usan `PUT /admin/reservations/:id`, pero este endpoint no puede saltarse el flujo. Autorizar, confirmar, rechazar y cancelar utilizan acciones dedicadas. Rote todos los secretos que hayan estado en el historial antes de publicar el repositorio saneado.
