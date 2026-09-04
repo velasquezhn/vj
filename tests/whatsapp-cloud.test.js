@@ -1,6 +1,13 @@
 const crypto = require('crypto');
 const express = require('express');
 const request = require('supertest');
+
+// Esta suite debe ser independiente de la base local y de cualquier dato sembrado.
+jest.mock('../services/whatsappAdminSettingsService', () => ({
+  ...jest.requireActual('../services/whatsappAdminSettingsService'),
+  activeAdminNumbers: jest.fn(async () => []),
+}));
+
 const { createWhatsAppWebhook, verifySignature, extractEvents, createSenderQueue, messageText, normalizeInteractiveReply } = require('../routes/whatsappWebhook');
 const { WhatsAppCloudService, normalizeRecipient } = require('../services/whatsappCloudService');
 const { sendReplyButtons, sendList } = require('../services/whatsappInteractiveService');
@@ -184,8 +191,8 @@ describe('WhatsApp Business Cloud API', () => {
   });
 
   test('restringe y entiende comandos administrativos de WhatsApp', async () => {
-    process.env.WHATSAPP_ADMIN_NUMBERS = '50487373838, 50492083526';
-    expect(await isAdminSender('50487373838@s.whatsapp.net')).toBe(true);
+    process.env.WHATSAPP_ADMIN_NUMBERS = '50499990001, 50499990002';
+    expect(await isAdminSender('50499990001@s.whatsapp.net')).toBe(true);
     expect(await isAdminSender('50411112222@s.whatsapp.net')).toBe(false);
     expect(parseReservationId('VJ-000123')).toBe(123);
     expect(parseReservationId('/aprobar 45')).toBe(45);
