@@ -31,7 +31,8 @@ function loadConfig({ validateWhatsApp = process.env.NODE_ENV === 'production' }
       accessToken: process.env.WHATSAPP_ACCESS_TOKEN || '',
       phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || '',
       verifyToken: process.env.WHATSAPP_VERIFY_TOKEN || '',
-      appSecret: process.env.META_APP_SECRET || ''
+      appSecret: process.env.META_APP_SECRET || '',
+      reservationFlowId: process.env.WHATSAPP_RESERVATION_FLOW_ID || ''
     }
   };
 

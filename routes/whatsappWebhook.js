@@ -53,6 +53,12 @@ function messageText(message) {
     message.image?.caption || message.document?.caption || '';
 }
 
+function flowReply(message) {
+  const raw = message.interactive?.nfm_reply?.response_json;
+  if (!raw) return null;
+  try { return typeof raw === 'string' ? JSON.parse(raw) : raw; } catch { return null; }
+}
+
 function createEventStore() {
   const { runExecute } = require('../db');
   return {
@@ -147,6 +153,8 @@ function createWhatsAppWebhook(options = {}) {
           if (message.type === 'image') normalized.message.imageMessage = message.image;
           else if (message.type === 'document') normalized.message.documentMessage = message.document;
           else normalized.message.conversation = messageText(message);
+          const submittedFlow = flowReply(message);
+          if (submittedFlow) normalized.flowReply = submittedFlow;
           try {
             await processMessage(client, sender, messageText(message), normalized);
             await eventStore.complete(message.id);
@@ -175,5 +183,6 @@ module.exports = {
   createEventStore,
   createSenderQueue,
   messageText,
+  flowReply,
   normalizeInteractiveReply
 };

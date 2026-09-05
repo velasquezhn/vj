@@ -12,6 +12,8 @@ const {
   NAVIGATION_FOOTER,
   normalizeMainMenuSelection
 } = require('../services/whatsappMessages');
+const { sendReservationFlow } = require('../services/whatsappFlowService');
+const { loadConfig } = require('../config/env');
 
 async function handleMainMenuOptions(bot, remitente, mensaje, establecerEstado) {
   switch (normalizeMainMenuSelection(mensaje)) {
@@ -20,8 +22,16 @@ async function handleMainMenuOptions(bot, remitente, mensaje, establecerEstado) 
       break;
 
     case MAIN_MENU_OPTIONS.RESERVE:
-      await bot.sendMessage(remitente, { text: reservationStart() });
-      await establecerEstado(remitente, 'reservar_fechas');
+      {
+        const flowId = loadConfig({ validateWhatsApp: false }).whatsapp.reservationFlowId;
+        const sent = await sendReservationFlow(bot, remitente, flowId);
+        if (sent) {
+          await establecerEstado(remitente, 'reservar_flow');
+        } else {
+          await bot.sendMessage(remitente, { text: reservationStart() });
+          await establecerEstado(remitente, 'reservar_fechas');
+        }
+      }
       break;
 
     case MAIN_MENU_OPTIONS.ACTIVITIES:

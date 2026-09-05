@@ -17,6 +17,63 @@ const { handleWeatherState } = require('./weatherHandler');
 const { sendReplyButtons } = require('../../services/whatsappInteractiveService');
 const { CONVERSATION_STATES, BUTTON_IDS } = require('../../services/whatsappConversation');
 
+function flowDate(value) {
+    const text = String(value || '').trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+        const [year, month, day] = text.split('-');
+        return `${day}/${month}/${year}`;
+    }
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(text)) return text;
+    return null;
+}
+
+async function handleReservationFlowReply(bot, remitente, reply, establecerEstado) {
+    const payload = reply || {};
+    const checkIn = flowDate(payload.check_in || payload.checkIn || payload.fecha_entrada);
+    const checkOut = flowDate(payload.check_out || payload.checkOut || payload.fecha_salida);
+    const guests = Number(payload.guests || payload.personas || payload.huespedes);
+    const name = String(payload.name || payload.nombre || '').trim();
+    const cabin = String(payload.cabin || payload.alojamiento || '').trim().toLowerCase();
+    const cabinAliases = { tortuga: 'tortuga', delfin: 'delfin', delfín: 'delfin', tiburon: 'tiburon', tiburón: 'tiburon' };
+    const alojamiento = cabinAliases[cabin] || (guests <= 3 ? 'tortuga' : guests <= 6 ? 'delfin' : guests <= 9 ? 'tiburon' : null);
+    if (!checkIn || !checkOut || !name || !Number.isInteger(guests) || guests < 1 || guests > 9 || !alojamiento) {
+        await sendReplyButtons(bot, remitente, {
+            header: 'Datos incompletos',
+            body: 'No pudimos validar todos los datos de la reserva. Vuelve a abrir el formulario y verifica cabaña, fechas, nombre y huéspedes.',
+            buttons: [{ id: BUTTON_IDS.RESERVATION_START, title: 'Intentar de nuevo' }, { id: BUTTON_IDS.MAIN_MENU, title: 'Menú principal' }]
+        });
+        await establecerEstado(remitente, CONVERSATION_STATES.MENU, {});
+        return true;
+    }
+    const { parseDateRange } = require('../../utils/dateRangeParser');
+    const parsed = parseDateRange(`${checkIn} al ${checkOut}`);
+    if (parsed.error) {
+        await sendReplyButtons(bot, remitente, {
+            header: 'Fechas inválidas',
+            body: `No pudimos validar las fechas: ${parsed.error}`,
+            buttons: [{ id: BUTTON_IDS.RESERVATION_START, title: 'Cambiar fechas' }, { id: BUTTON_IDS.MAIN_MENU, title: 'Menú principal' }]
+        });
+        await establecerEstado(remitente, CONVERSATION_STATES.MENU, {});
+        return true;
+    }
+    const { calcularPrecioTotal } = require('../../services/reservaPriceService');
+    const { getBusinessSettings, reservationTerms } = require('../../services/businessSettingsService');
+    const precioTotal = calcularPrecioTotal(alojamiento, parsed.entrada, parsed.noches);
+    const settings = await getBusinessSettings();
+    const datos = {
+        fechaEntrada: parsed.entrada, fechaSalida: parsed.salida, noches: parsed.noches,
+        nombre: name, personas: guests, alojamiento, precioTotal,
+        telefono: remitente.split('@')[0]
+    };
+    const summary = `📋 *RESUMEN DE TU RESERVA*\n\n👤 *Nombre:* ${name}\n📅 *Fechas:* ${parsed.entrada} al ${parsed.salida}\n🌙 *Noches:* ${parsed.noches}\n👥 *Personas:* ${guests}\n🏠 *Alojamiento:* ${alojamiento.toUpperCase()}\n💵 *Total:* HNL ${precioTotal.toLocaleString('es-HN')}\n\n${reservationTerms(settings)}\n\n¿Aceptas estas condiciones?`;
+    await sendReplyButtons(bot, remitente, {
+        header: 'Confirma tu reserva', body: summary, footer: 'La disponibilidad se confirma al aceptar',
+        buttons: [{ id: BUTTON_IDS.TERMS_ACCEPT, title: 'Acepto' }, { id: BUTTON_IDS.TERMS_DECLINE, title: 'No acepto' }, { id: BUTTON_IDS.MAIN_MENU, title: 'Menú principal' }]
+    });
+    await establecerEstado(remitente, ESTADOS_RESERVA.CONDICIONES, datos);
+    return true;
+}
+
 async function handleBack(bot, remitente, estado) {
     if (estado === 'LISTA_CABAÑAS') return enviarMenuPrincipal(bot, remitente);
     if (estado === 'DETALLE_CABAÑA') {
@@ -128,6 +185,13 @@ async function procesarMensaje(bot, remitente, mensaje, mensajeObj) {
         const estadoData = await obtenerEstado(remitente);
         const estado = estadoData.estado;
         const datos = estadoData.datos;
+
+        if (mensajeObj?.flowReply) {
+            if (estado === 'reservar_flow' || estado === CONVERSATION_STATES.MENU) {
+                await handleReservationFlowReply(bot, remitente, mensajeObj.flowReply, establecerEstado);
+                return;
+            }
+        }
 
         if (estadoData.expired) {
             await sendReplyButtons(bot, remitente, {
