@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - production
       - codex/whatsapp-cloud-production
   pull_request:
     branches:

@@ -11,7 +11,7 @@ module.exports = {
   obtenerEstado: persistentStateService.obtenerEstado,
   establecerUltimoSaludo: persistentStateService.establecerUltimoSaludo,
   obtenerUltimoSaludo: persistentStateService.obtenerUltimoSaludo,
-  
+
   // Funciones adicionales del nuevo sistema
   initializeStateTables: persistentStateService.initializeStateTables,
   cleanupExpiredStates: persistentStateService.cleanupExpiredStates,

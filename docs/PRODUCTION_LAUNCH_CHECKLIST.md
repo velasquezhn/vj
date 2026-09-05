@@ -4,11 +4,12 @@ El ambiente público actual es **QA** aunque ejecute el runtime de Node.js en mo
 
 ## 1. Infraestructura separada
 
-- [ ] Crear un ambiente Railway `production` desde `main`.
-- [ ] Crear un volumen nuevo y vacío para `/app/storage`.
-- [ ] Definir `APP_ENV=production` y mantener una sola réplica mientras se use SQLite.
-- [ ] Configurar `/ready` como healthcheck y confirmar respuesta `ready`.
-- [ ] Conservar QA para regresiones futuras.
+- [x] Conservar el ambiente Railway existente como `qa`, desplegado desde `main`.
+- [x] Crear un ambiente Railway `production` separado, con almacenamiento aislado.
+- [x] Definir `APP_ENV=production` y mantener una sola réplica mientras se use SQLite.
+- [x] Configurar `/ready` como healthcheck y confirmar respuesta `ready`.
+- [ ] Desplegar producción únicamente desde la rama `production`; promover a esa rama sólo un commit validado primero en QA.
+- [ ] Confirmar que el volumen de producción no contiene reservas, clientes ni comprobantes de QA.
 
 ## 2. Datos y acceso
 
@@ -20,6 +21,7 @@ El ambiente público actual es **QA** aunque ejecute el runtime de Node.js en mo
 
 ## 3. Meta y WhatsApp
 
+- [ ] Mantener `WHATSAPP_ENABLED=false` en producción hasta el corte final; QA continúa atendiendo el webhook durante las pruebas.
 - [ ] Usar el número definitivo y un token permanente de usuario del sistema.
 - [ ] Confirmar aplicación activa, negocio verificado y suscripción del webhook al campo `messages`.
 - [ ] Configurar `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_VERIFY_TOKEN` y `META_APP_SECRET` únicamente en Railway.
@@ -46,3 +48,11 @@ El ambiente público actual es **QA** aunque ejecute el runtime de Node.js en mo
 - [ ] GitHub Actions y Railway finalizan correctamente para el mismo commit.
 - [ ] `/health` informa `environment=production` y `/ready` informa `database=ok`.
 - [ ] Etiquetar el commit aprobado como `v1.0.0` y registrar fecha, responsable y evidencia.
+
+## Promoción de una versión
+
+1. Integrar el cambio en `main` y esperar que CI y el despliegue de QA terminen correctamente.
+2. Ejecutar las pruebas de humo en QA, especialmente reserva, autorización administrativa, pago y confirmación.
+3. Avanzar la rama `production` al mismo commit de `main` mediante avance rápido, sin reescribir historial.
+4. Esperar CI y Railway; comprobar `/health` y `/ready` en producción.
+5. Etiquetar la versión aprobada. El lanzamiento inicial usa `v1.0.0`; las candidatas previas pueden usar `v1.0.0-rc.N`.
