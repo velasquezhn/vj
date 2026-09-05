@@ -8,7 +8,7 @@ WhatsApp no ofrece un calendario en un mensaje normal. Flow sí permite un formu
 
 ## Activación en Meta
 
-1. En WhatsApp Manager crea un Flow del tipo formulario y agrega un `CalendarPicker` para entrada/salida, selector de cabaña, huéspedes y nombre.
+1. En WhatsApp Manager crea un Flow del tipo formulario y agrega un `CalendarPicker` para entrada/salida, selector de cabaña, huéspedes y nombre. El JSON fuente se conserva en `config/whatsapp-reservation-flow.json`.
 2. Usa estos nombres de salida para que el backend los reconozca: `cabin`, `check_in`, `check_out`, `guests`, `name` (fechas ISO `YYYY-MM-DD`).
 3. Publica el Flow y copia su **Flow ID**.
 4. En Railway agrega `WHATSAPP_RESERVATION_FLOW_ID=<FLOW_ID>` en el entorno QA. No copies tokens al repositorio.
@@ -24,4 +24,4 @@ WhatsApp no ofrece un calendario en un mensaje normal. Flow sí permite un formu
 - Sólo después de la autorización se acepta imagen/PDF del comprobante.
 - El administrador verifica y el huésped recibe la confirmación.
 
-El ID del Flow es configuración externa de Meta; hasta introducirlo, el comportamiento existente permanece intacto.
+El ID del Flow es configuración externa de Meta; hasta introducirlo, el comportamiento existente permanece intacto. La publicación puede quedar bloqueada por los requisitos de verificación/calidad de Meta; el borrador validado sigue siendo seguro porque el bot conserva el respaldo conversacional.

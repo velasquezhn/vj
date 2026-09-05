@@ -1,0 +1,89 @@
+{
+  "version": "7.3",
+  "screens": [
+    {
+      "id": "RESERVATION",
+      "title": "Reserva",
+      "terminal": true,
+      "success": true,
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Form",
+            "name": "reservation_form",
+            "children": [
+              {
+                "type": "TextHeading",
+                "text": "Reserva tu estadía"
+              },
+              {
+                "type": "TextBody",
+                "text": "Elige tu cabaña y tus fechas. Te confirmaremos la disponibilidad por este mismo chat."
+              },
+              {
+                "type": "TextCaption",
+                "text": "Entrada 2:00 p. m. · Salida 11:00 a. m."
+              },
+              {
+                "type": "Dropdown",
+                "label": "Cabaña",
+                "name": "cabin",
+                "required": true,
+                "data-source": [
+                  { "id": "tortuga", "title": "Tortuga · hasta 3" },
+                  { "id": "delfin", "title": "Delfín · hasta 6" },
+                  { "id": "tiburon", "title": "Tiburón · hasta 9" }
+                ]
+              },
+              {
+                "type": "CalendarPicker",
+                "name": "stay",
+                "title": "Fechas de hospedaje",
+                "description": "Selecciona llegada y salida",
+                "label": { "start-date": "Entrada", "end-date": "Salida" },
+                "helper-text": { "start-date": "Llegada", "end-date": "Salida" },
+                "mode": "range",
+                "min-date": "2026-09-05",
+                "max-date": "2028-09-05",
+                "min-days": 1,
+                "required": { "start-date": true, "end-date": true }
+              },
+              {
+                "type": "TextInput",
+                "label": "Nombre completo",
+                "name": "name",
+                "required": true,
+                "min-chars": 2,
+                "max-chars": 100,
+                "helper-text": "Escribe tu nombre real"
+              },
+              {
+                "type": "TextInput",
+                "label": "Huéspedes (1-9)",
+                "name": "guests",
+                "required": true,
+                "input-type": "number",
+                "helper-text": "Cantidad total"
+              },
+              {
+                "type": "Footer",
+                "label": "Enviar solicitud",
+                "on-click-action": {
+                  "name": "complete",
+                  "payload": {
+                    "cabin": "${form.cabin}",
+                    "stay": "${form.stay}",
+                    "name": "${form.name}",
+                    "guests": "${form.guests}"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "routing_model": { "RESERVATION": [] }
+}
