@@ -215,7 +215,7 @@ class WeatherService {
         message = 'El servicio de clima alcanzó temporalmente su límite. Intenta nuevamente en unos minutos.';
       } else if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
         code = 'TIMEOUT';
-        message = 'La consulta del clima tardó demasiado. Puedes intentarlo nuevamente o consultar otra ciudad.';
+        message = 'La consulta del clima de Tela tardó demasiado. Puedes intentar actualizarla o volver al menú.';
       } else if (!error.response) {
         code = 'NETWORK_ERROR';
         message = 'No pudimos conectarnos con el servicio de clima. Intenta nuevamente en unos minutos.';

@@ -77,7 +77,7 @@ El menú principal, los alojamientos y las experiencias usan listas interactivas
 
 Los mensajes interactivos solo pueden enviarse dentro de la ventana de atención iniciada por el huésped. Para iniciar conversaciones fuera de esa ventana se debe crear y aprobar una plantilla en WhatsApp Manager; las plantillas no se usan para navegar los menús.
 
-La opción **Clima** solicita una ciudad en vez de asumir una ubicación fija. Acepta nombres con país, ofrece acceso directo a Tela y conserva botones para actualizar, cambiar ciudad o volver al menú después de cualquier respuesta. Usa OpenWeather cuando hay clave y, en QA, Open-Meteo como respaldo sin clave. Ambos caminos aplican timeout y manejo diferenciado de ciudad inexistente, límites, credenciales inválidas, fallo de red y respuesta incompleta.
+La opción **Clima** consulta exclusivamente el pronóstico de Tela sin solicitar una ubicación. Después del resultado o de un error ofrece únicamente **Actualizar** y **Menú principal**. Usa OpenWeather cuando hay clave y, en QA, Open-Meteo como respaldo sin clave. Ambos caminos aplican timeout y manejo diferenciado de límites, credenciales inválidas, fallo de red y respuesta incompleta.
 
 ### Fechas escritas por WhatsApp
 

@@ -6,7 +6,7 @@ jest.mock('../controllers/flows/menuHandler', () => ({ handleMenuState: jest.fn(
 jest.mock('../controllers/flows/actividadesHandler', () => ({ handleActividadesState: jest.fn() }));
 jest.mock('../controllers/flows/reservaFlowHandler', () => ({ handleReservaState: jest.fn() }));
 jest.mock('../controllers/flows/weatherHandler', () => ({
-  handleWeatherState: jest.fn(), showWeatherPrompt: jest.fn()
+  handleWeatherState: jest.fn(), sendTelaWeather: jest.fn()
 }));
 jest.mock('../services/messagingService', () => ({
   enviarMenuPrincipal: jest.fn(), enviarMenuCabanas: jest.fn(), enviarMenuActividades: jest.fn()
@@ -21,7 +21,7 @@ const { procesarMensaje } = require('../controllers/flows/messageProcessor');
 const stateService = require('../services/stateService');
 const { handleGreeting } = require('../controllers/flows/greetingHandler');
 const { handleReservaState } = require('../controllers/flows/reservaFlowHandler');
-const { showWeatherPrompt } = require('../controllers/flows/weatherHandler');
+const { sendTelaWeather } = require('../controllers/flows/weatherHandler');
 const { enviarMenuPrincipal } = require('../services/messagingService');
 const { sendReplyButtons } = require('../services/whatsappInteractiveService');
 const adminService = require('../services/whatsappAdminService');
@@ -40,7 +40,7 @@ describe('navegación global y recuperación de conversaciones', () => {
     adminService.notifyAdminsOfGuestRequest.mockResolvedValue({ sent: 2, failed: 0 });
     sendReplyButtons.mockResolvedValue({ ok: true });
     enviarMenuPrincipal.mockResolvedValue();
-    showWeatherPrompt.mockResolvedValue();
+    sendTelaWeather.mockResolvedValue();
   });
 
   test('ayuda avisa a administradores y deja una salida al menú', async () => {
@@ -52,12 +52,12 @@ describe('navegación global y recuperación de conversaciones', () => {
     expect(sendReplyButtons.mock.calls[0][2].buttons[0].title).toBe('Menú principal');
   });
 
-  test('reiniciar clima vuelve a pedir ciudad y descarta la consulta previa', async () => {
+  test('reiniciar clima actualiza directamente el pronóstico de Tela', async () => {
     stateService.obtenerEstado.mockResolvedValue({
       estado: CONVERSATION_STATES.WEATHER_RESULT, datos: { weatherQuery: 'Tela' }
     });
     await procesarMensaje(bot, sender, 'Empezar de nuevo', {});
-    expect(showWeatherPrompt).toHaveBeenCalledWith(bot, sender, stateService.establecerEstado);
+    expect(sendTelaWeather).toHaveBeenCalledWith(bot, sender, stateService.establecerEstado);
   });
 
   test('un saludo dentro del nombre no reinicia el flujo', async () => {

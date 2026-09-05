@@ -3,10 +3,10 @@ jest.mock('../services/messagingService', () => ({ enviarMenuPrincipal: jest.fn(
 
 const { sendReplyButtons } = require('../services/whatsappInteractiveService');
 const { enviarMenuPrincipal } = require('../services/messagingService');
-const { showWeatherPrompt, sendWeatherResult, handleWeatherState } = require('../controllers/flows/weatherHandler');
+const { TELA_QUERY, sendTelaWeather, handleWeatherState } = require('../controllers/flows/weatherHandler');
 const { CONVERSATION_STATES } = require('../services/whatsappConversation');
 
-describe('flujo conversacional de clima', () => {
+describe('flujo conversacional de clima exclusivo para Tela', () => {
   const bot = {};
   const recipient = '50400000000';
   let setState;
@@ -16,47 +16,34 @@ describe('flujo conversacional de clima', () => {
     setState = jest.fn().mockResolvedValue();
   });
 
-  test('solicita una ciudad con botones y alternativa escrita', async () => {
-    await showWeatherPrompt(bot, recipient, setState);
-    expect(setState).toHaveBeenCalledWith(recipient, CONVERSATION_STATES.WEATHER_CITY, {});
-    const payload = sendReplyButtons.mock.calls[0][2];
-    expect(payload.buttons).toHaveLength(3);
-    expect(payload.fallbackText).toMatch(/1\. Clima de Tela[\s\S]*0\. Menú principal/);
-  });
-
-  test('muestra resultado y conserva acciones de recuperación', async () => {
-    const service = { getWeatherForecast: jest.fn().mockResolvedValue({ success: true, message: 'Soleado' }) };
-    await sendWeatherResult(bot, recipient, 'Tela, Honduras', setState, service);
+  test('consulta Tela inmediatamente sin solicitar ciudad', async () => {
+    const service = { getWeatherForecast: jest.fn().mockResolvedValue({ success: true, message: 'Soleado', provider: 'open-meteo' }) };
+    await sendTelaWeather(bot, recipient, setState, service);
+    expect(service.getWeatherForecast).toHaveBeenCalledWith('Tela, Honduras');
+    expect(TELA_QUERY).toBe('Tela, Honduras');
     expect(setState).toHaveBeenCalledWith(recipient, CONVERSATION_STATES.WEATHER_RESULT, { weatherQuery: 'Tela, Honduras' });
-    expect(sendReplyButtons.mock.calls[0][2].buttons.map((button) => button.title)).toEqual(['Actualizar', 'Otra ciudad', 'Menú principal']);
+    const payload = sendReplyButtons.mock.calls[0][2];
+    expect(payload.buttons.map((button) => button.title)).toEqual(['Actualizar', 'Menú principal']);
+    expect(payload.footer).toBe('Fuente: Open-Meteo');
+    expect(payload.fallbackText).not.toMatch(/otra ciudad|escribe.*ciudad/i);
   });
 
-  test('los fallos también permiten reintentar, cambiar ciudad o volver', async () => {
+  test('los fallos permiten actualizar Tela o volver al menú', async () => {
     const service = { getWeatherForecast: jest.fn().mockResolvedValue({ success: false, message: 'No disponible' }) };
-    await sendWeatherResult(bot, recipient, 'Tela', setState, service);
-    expect(sendReplyButtons.mock.calls[0][2].fallbackText).toMatch(/1\. Intentar nuevamente[\s\S]*2\. Consultar otra ciudad[\s\S]*0\. Menú principal/);
+    await sendTelaWeather(bot, recipient, setState, service);
+    const payload = sendReplyButtons.mock.calls[0][2];
+    expect(payload.buttons.map((button) => button.title)).toEqual(['Actualizar', 'Menú principal']);
+    expect(payload.fallbackText).toMatch(/1\. Actualizar clima de Tela[\s\S]*0\. Menú principal/);
   });
 
-  test.each(['0', 'MENÚ', 'menu'])('vuelve al menú con %s', async (input) => {
-    await handleWeatherState(bot, recipient, input, CONVERSATION_STATES.WEATHER_CITY, {}, setState);
+  test.each(['0', 'MENÚ', 'menu principal'])('vuelve al menú con %s', async (input) => {
+    await handleWeatherState(bot, recipient, input, CONVERSATION_STATES.WEATHER_RESULT, {}, setState);
     expect(enviarMenuPrincipal).toHaveBeenCalledWith(bot, recipient);
   });
 
-  test('reintenta la última ciudad tras un resultado', async () => {
-    const service = { getWeatherForecast: jest.fn().mockResolvedValue({ success: true, message: 'Listo' }) };
-    await handleWeatherState(bot, recipient, 'ACTUALIZAR', CONVERSATION_STATES.WEATHER_RESULT, { weatherQuery: 'La Ceiba, Honduras' }, setState, service);
-    expect(service.getWeatherForecast).toHaveBeenCalledWith('La Ceiba, Honduras');
-  });
-
-  test('acepta una ciudad escrita libremente y normaliza espacios externos', async () => {
-    const service = { getWeatherForecast: jest.fn().mockResolvedValue({ success: true, message: 'Listo' }) };
-    await handleWeatherState(bot, recipient, '  San Pedro Sula, Honduras  ', CONVERSATION_STATES.WEATHER_CITY, {}, setState, service);
-    expect(service.getWeatherForecast).toHaveBeenCalledWith('San Pedro Sula, Honduras');
-  });
-
-  test('una respuesta vacía vuelve a explicar las opciones', async () => {
-    await handleWeatherState(bot, recipient, '   ', CONVERSATION_STATES.WEATHER_CITY, {}, setState);
-    expect(setState).toHaveBeenCalledWith(recipient, CONVERSATION_STATES.WEATHER_CITY, {});
-    expect(sendReplyButtons).toHaveBeenCalledTimes(1);
+  test.each(['1', 'ACTUALIZAR', '', 'San Pedro Sula, Honduras'])('cualquier otra entrada mantiene la consulta exclusiva de Tela (%s)', async (input) => {
+    const service = { getWeatherForecast: jest.fn().mockResolvedValue({ success: true, message: 'Listo', provider: 'open-meteo' }) };
+    await handleWeatherState(bot, recipient, input, CONVERSATION_STATES.WEATHER_RESULT, {}, setState, service);
+    expect(service.getWeatherForecast).toHaveBeenCalledWith('Tela, Honduras');
   });
 });

@@ -25,8 +25,6 @@ const BUTTON_IDS = Object.freeze({
   TERMS_ACCEPT: 'terms_accept',
   TERMS_DECLINE: 'terms_decline',
   ACTIVITIES_MORE: 'activities_more',
-  WEATHER_TELA: 'weather_tela',
-  WEATHER_OTHER: 'weather_other',
   WEATHER_RETRY: 'weather_retry',
   POST_CANCEL_YES: 'post_cancel_yes',
   POST_CANCEL_NO: 'post_cancel_no',

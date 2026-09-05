@@ -2,7 +2,7 @@ const { extraerTelefono } = require('../utils/telefonoUtils');
 const { enviarMenuPrincipal, enviarMenuCabanas, enviarMenuActividades } = require('../services/messagingService');
 const { sendReplyButtons, sendList } = require('../services/whatsappInteractiveService');
 const { getPaymentSettings } = require('../services/paymentSettingsService');
-const { showWeatherPrompt } = require('./flows/weatherHandler');
+const { sendTelaWeather } = require('./flows/weatherHandler');
 const { CONVERSATION_STATES, MAIN_MENU_OPTIONS, BUTTON_IDS } = require('../services/whatsappConversation');
 const logger = require('../config/logger');
 const {
@@ -41,7 +41,7 @@ async function handleMainMenuOptions(bot, remitente, mensaje, establecerEstado) 
       break;
 
     case MAIN_MENU_OPTIONS.WEATHER:
-      await showWeatherPrompt(bot, remitente, establecerEstado);
+      await sendTelaWeather(bot, remitente, establecerEstado);
       break;
 
     case MAIN_MENU_OPTIONS.FAQ:

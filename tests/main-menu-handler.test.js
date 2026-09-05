@@ -10,14 +10,14 @@ jest.mock('../services/whatsappInteractiveService', () => ({
 jest.mock('../services/paymentSettingsService', () => ({
   getPaymentSettings: jest.fn().mockResolvedValue({ deposit_percentage: 50 })
 }));
-jest.mock('../controllers/flows/weatherHandler', () => ({ showWeatherPrompt: jest.fn().mockResolvedValue() }));
+jest.mock('../controllers/flows/weatherHandler', () => ({ sendTelaWeather: jest.fn().mockResolvedValue() }));
 jest.mock('../db', () => ({ runQuery: jest.fn().mockResolvedValue([]) }));
 
 const { handleMainMenuOptions } = require('../controllers/mainMenuHandler');
 const messaging = require('../services/messagingService');
 const interactive = require('../services/whatsappInteractiveService');
 const { getPaymentSettings } = require('../services/paymentSettingsService');
-const { showWeatherPrompt } = require('../controllers/flows/weatherHandler');
+const { sendTelaWeather } = require('../controllers/flows/weatherHandler');
 const { CONVERSATION_STATES } = require('../services/whatsappConversation');
 
 describe('opciones del menú principal de WhatsApp', () => {
@@ -45,7 +45,7 @@ describe('opciones del menú principal de WhatsApp', () => {
     if (flow === 'activities') expect(messaging.enviarMenuActividades).toHaveBeenCalledWith(bot, recipient);
     if (flow === 'contact' || flow === 'faq') expect(interactive.sendReplyButtons).toHaveBeenCalledTimes(1);
     if (flow === 'contact') expect(setState).toHaveBeenCalledWith(recipient, CONVERSATION_STATES.CONTACT_MESSAGE, {});
-    if (flow === 'weather') expect(showWeatherPrompt).toHaveBeenCalledWith(bot, recipient, setState);
+    if (flow === 'weather') expect(sendTelaWeather).toHaveBeenCalledWith(bot, recipient, setState);
     if (flow === 'my-reservation') {
       expect(interactive.sendReplyButtons).toHaveBeenCalledTimes(1);
       expect(setState).toHaveBeenCalledWith(recipient, CONVERSATION_STATES.POST_RESERVATION_EMPTY);

@@ -45,17 +45,17 @@ Use un número de prueba autorizado por Meta y ejecute cada caso con un identifi
 5. Envíe dos mensajes consecutivos desde el mismo número y confirme que las respuestas respetan el orden.
 6. Reenvíe el mismo webhook y confirme que se procesa una sola vez.
 7. Antes de la autorización, envíe una foto: debe rechazarse como comprobante. Después de autorizar, envíe JPG, PNG y PDF válidos y un archivo inválido.
-8. En Clima, pruebe Tela, una ciudad escrita, una ciudad inexistente, texto inválido, reintento, cambio de ciudad y regreso al menú.
-9. Simule timeout, respuesta incompleta, HTTP 401, 404, 429 y 5xx del proveedor de clima: cada caso debe explicar el fallo y conservar Reintentar, Otra ciudad y Menú principal.
+8. En Clima, compruebe que se consulta Tela inmediatamente, sin preguntar ciudad, y pruebe actualización y regreso al menú.
+9. Simule timeout, respuesta incompleta, HTTP 401, 404, 429 y 5xx del proveedor de clima: cada caso debe explicar el fallo y conservar Actualizar y Menú principal.
 10. Simule HTTP 429 y 5xx desde Meta: se conservan los reintentos técnicos. Simule HTTP 400: no debe reintentarse.
 
 ## Flujo de clima
 
 1. Seleccione **Clima** en el menú principal.
-2. Pulse **Clima de Tela** o escriba una ciudad, preferiblemente con país, por ejemplo `La Ceiba, Honduras`.
-3. El bot valida longitud y caracteres antes de consultar OpenWeather o el respaldo Open-Meteo habilitado para QA.
+2. El bot consulta automáticamente `Tela, Honduras`; no solicita ni acepta otra ubicación desde WhatsApp.
+3. El servicio consulta OpenWeather o el respaldo Open-Meteo habilitado para QA.
 4. El resultado presenta condiciones actuales, temperatura mínima y máxima, pronóstico de mañana, probabilidad de lluvia y hora de actualización.
-5. Después de un resultado o error puede seleccionar **Actualizar**, **Otra ciudad** o **Menú principal**. Por texto use `1`, `2` o `0`.
+5. Después de un resultado o error puede seleccionar **Actualizar** o **Menú principal**. Por texto use `1` o `0`.
 
 La consulta tiene un timeout configurable y traduce por separado ciudad inexistente, credenciales inválidas, límite de uso, fallo de red y respuesta incompleta. Ninguno de esos casos cierra la conversación.
 

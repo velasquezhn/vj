@@ -40,8 +40,8 @@ async function handleRestart(bot, remitente, estado) {
         return bot.sendMessage(remitente, { text: reservationStart() });
     }
     if ([CONVERSATION_STATES.WEATHER_CITY, CONVERSATION_STATES.WEATHER_RESULT].includes(estado)) {
-        const { showWeatherPrompt } = require('./weatherHandler');
-        return showWeatherPrompt(bot, remitente, establecerEstado);
+        const { sendTelaWeather } = require('./weatherHandler');
+        return sendTelaWeather(bot, remitente, establecerEstado);
     }
     if ([CONVERSATION_STATES.CABIN_LIST, CONVERSATION_STATES.CABIN_DETAIL].includes(estado)) {
         const { enviarMenuCabanas } = require('../../services/messagingService');
