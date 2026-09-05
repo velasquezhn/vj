@@ -603,8 +603,9 @@ add_many("BLOQUE 19 — Webhook e integraciones", "Superadministrador + técnico
     ("reintentar error 5xx o timeout", "Simule 500 y timeout de Meta", "El mensaje se conserva para reintento con error sanitizado.", {"technical": True}),
     ("no reintentar error permanente 400", "Simule 400 no recuperable", "Se marca fallido sin bucle infinito.", {"technical": True}),
     ("usar respaldo de texto si fallan botones", "Simule rechazo de mensaje interactivo", "Envía texto numerado equivalente una sola vez.", {"technical": True}),
-    ("manejar clima no configurado", "Desactive OPENWEATHER_API_KEY en QA|Seleccione Clima|Consulte Tela", "El bot informa la configuración faltante y ofrece reintentar, otra ciudad o menú."),
-    ("manejar ciudad inexistente", "Simule respuesta 404 de OpenWeather", "Explica que no encontró la ciudad y conserva las tres acciones de recuperación."),
+    ("manejar clima no configurado", "Desactive OPENWEATHER_API_KEY y ALLOW_FREE_WEATHER_FALLBACK|Seleccione Clima|Consulte Tela", "El bot informa la configuración faltante y ofrece reintentar, otra ciudad o menú."),
+    ("usar respaldo de clima en QA", "Active ALLOW_FREE_WEATHER_FALLBACK sin OPENWEATHER_API_KEY|Seleccione Clima|Consulte Tela", "El bot consulta Open-Meteo, responde y conserva las tres acciones de recuperación."),
+    ("manejar ciudad inexistente", "Simule respuesta vacía de geocodificación o 404 de OpenWeather", "Explica que no encontró la ciudad y conserva las tres acciones de recuperación."),
     ("manejar timeout de clima", "Simule ECONNABORTED o ETIMEDOUT", "Explica que la consulta tardó demasiado y permite reintentar."),
     ("manejar límite de clima", "Simule respuesta 429 de OpenWeather", "Informa el límite temporal sin bloquear la conversación."),
     ("manejar respuesta incompleta de clima", "Devuelva weather, main, timezone o forecast incompletos", "No muestra datos engañosos y permite intentar nuevamente."),
@@ -744,7 +745,7 @@ def add_intro(doc):
         ("Base de datos", "SQLite persistente con WAL", "Datos, estados, auditoría y cola"),
         ("Mensajería", "WhatsApp Business Cloud API de Meta", "Atención de huéspedes y decisiones administrativas"),
         ("Archivos", "Volumen Railway", "Comprobantes y copias"),
-        ("Opcionales", "Dropbox y OpenWeather", "Copia externa y clima"),
+        ("Opcionales", "Dropbox, OpenWeather y respaldo Open-Meteo para QA", "Copia externa y clima"),
     ]
     table = doc.add_table(rows=1, cols=3)
     table.rows[0].cells[0].text, table.rows[0].cells[1].text, table.rows[0].cells[2].text = "Componente", "Tecnología", "Uso"

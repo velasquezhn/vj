@@ -53,7 +53,7 @@ Use un número de prueba autorizado por Meta y ejecute cada caso con un identifi
 
 1. Seleccione **Clima** en el menú principal.
 2. Pulse **Clima de Tela** o escriba una ciudad, preferiblemente con país, por ejemplo `La Ceiba, Honduras`.
-3. El bot valida longitud y caracteres antes de consultar OpenWeather.
+3. El bot valida longitud y caracteres antes de consultar OpenWeather o el respaldo Open-Meteo habilitado para QA.
 4. El resultado presenta condiciones actuales, temperatura mínima y máxima, pronóstico de mañana, probabilidad de lluvia y hora de actualización.
 5. Después de un resultado o error puede seleccionar **Actualizar**, **Otra ciudad** o **Menú principal**. Por texto use `1`, `2` o `0`.
 

@@ -36,13 +36,13 @@ describe('servicio de clima', () => {
   });
 
   test.each([
-    ['', 'NOT_CONFIGURED'],
+    ['Tela', 'NOT_CONFIGURED'],
     ['x', 'INVALID_CITY'],
     ['Tela123', 'INVALID_CITY']
   ])('rechaza configuración o ciudad inválida sin llamar al proveedor', async (city, code) => {
     const http = { get: jest.fn() };
     const key = code === 'NOT_CONFIGURED' ? '' : 'test-key';
-    const result = await new WeatherService(key, { http }).getWeatherForecast(city);
+    const result = await new WeatherService(key, { http, enableFallback: false }).getWeatherForecast(city);
     expect(result).toMatchObject({ success: false, code });
     expect(http.get).not.toHaveBeenCalled();
   });
@@ -65,5 +65,32 @@ describe('servicio de clima', () => {
     const http = { get: jest.fn().mockResolvedValue({ data: {} }) };
     const result = await new WeatherService('test-key', { http }).getWeatherForecast('Tela, Honduras');
     expect(result).toMatchObject({ success: false, code: 'INCOMPLETE_RESPONSE' });
+  });
+
+  test('usa Open-Meteo en QA cuando no hay clave de OpenWeather', async () => {
+    const fallbackHttp = {
+      get: jest.fn()
+        .mockResolvedValueOnce({ data: { results: [{ name: 'Tela', admin1: 'Atlántida', country_code: 'HN', latitude: 15.78, longitude: -87.45 }] } })
+        .mockResolvedValueOnce({ data: {
+          current: { temperature_2m: 29.4, weather_code: 2 },
+          daily: {
+            weather_code: [2, 61],
+            temperature_2m_min: [24.2, 23.9],
+            temperature_2m_max: [31.7, 30.1],
+            precipitation_probability_max: [35, 80]
+          }
+        } })
+    };
+    const result = await new WeatherService('', { fallbackHttp, enableFallback: true }).getWeatherForecast('Tela, Honduras');
+    expect(result).toMatchObject({ success: true, provider: 'open-meteo' });
+    expect(result.message).toMatch(/Clima en Tela, Atlántida, HN/);
+    expect(result.message).toMatch(/Lluvia 80%/);
+    expect(fallbackHttp.get).toHaveBeenCalledTimes(2);
+  });
+
+  test('una ciudad inexistente en Open-Meteo se recupera sin bloquear el flujo', async () => {
+    const fallbackHttp = { get: jest.fn().mockResolvedValue({ data: { results: [] } }) };
+    const result = await new WeatherService('', { fallbackHttp, enableFallback: true }).getWeatherForecast('Ciudad Imaginaria');
+    expect(result).toMatchObject({ success: false, code: 'CITY_NOT_FOUND' });
   });
 });
