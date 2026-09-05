@@ -50,6 +50,7 @@ const actividadesService = require('./services/actividadesService');
 const backupService = require('./services/backupService');
 const reservaCleanupService = require('./services/reservaCleanupService');
 const notificationQueueService = require('./services/notificationQueueService');
+const { verifyInitialProductionData } = require('./services/productionReadinessService');
 const { clearSessionCookie } = require('./utils/sessionCookie');
 
 const app = express();
@@ -69,6 +70,7 @@ const weatherProvider = String(process.env.OPENWEATHER_API_KEY || '').trim()
   : (WeatherService.isFreeFallbackAllowed() ? 'open-meteo' : null);
 const weatherConfigured = Boolean(weatherProvider);
 const REQUIRED_TABLES = ['Users', 'Cabins', 'Reservations', 'UserStates', 'WhatsAppEvents'];
+const receiptsDir = path.resolve(process.env.RECEIPTS_DIR || path.join(__dirname, 'public/comprobantes'));
 
 async function assertDatabaseReady() {
   const placeholders = REQUIRED_TABLES.map(() => '?').join(', ');
@@ -103,6 +105,13 @@ app.get('/health', (_req, res) => res.status(200).json({
 app.get('/ready', async (_req, res) => {
   try {
     await assertDatabaseReady();
+    await verifyInitialProductionData({
+      appEnv: config.appEnv,
+      enabled: config.requireEmptyProductionData,
+      databasePath: config.databasePath,
+      receiptsDir,
+      runQuery
+    });
     const ready = !whatsappEnabled || whatsappConfigured;
     return res.status(ready ? 200 : 503).json({
       status: ready ? 'ready' : 'not_ready', database: 'ok', whatsappEnabled, whatsappConfigured, weatherConfigured, weatherProvider
@@ -167,7 +176,6 @@ app.use(advancedSecurityMiddleware);
 app.use('/users', usersRoutes);
 
 // Serve static files for simple frontend UI
-const receiptsDir = path.resolve(process.env.RECEIPTS_DIR || path.join(__dirname, 'public/comprobantes'));
 app.use('/comprobantes', express.static(receiptsDir));
 app.use(express.static(path.join(__dirname, 'public')));
 

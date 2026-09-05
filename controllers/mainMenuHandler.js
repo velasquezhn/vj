@@ -9,11 +9,12 @@ const {
   reservationStart,
   contactMessage,
   faqMessage,
-  NAVIGATION_FOOTER
+  NAVIGATION_FOOTER,
+  normalizeMainMenuSelection
 } = require('../services/whatsappMessages');
 
 async function handleMainMenuOptions(bot, remitente, mensaje, establecerEstado) {
-  switch (mensaje) {
+  switch (normalizeMainMenuSelection(mensaje)) {
     case MAIN_MENU_OPTIONS.LODGING:
       await enviarMenuCabanas(bot, remitente);
       break;
@@ -72,7 +73,7 @@ async function handleMainMenuOptions(bot, remitente, mensaje, establecerEstado) 
       break;
 
     default: // Opción inválida
-      await enviarMenuPrincipal(bot, remitente, 'No reconocí esa opción. Selecciona una de la lista o responde del 1 al 7.');
+      await enviarMenuPrincipal(bot, remitente, 'No reconocí esa opción. Elige una opción de la lista o escribe del 1 al 7.');
       break;
   }
 }

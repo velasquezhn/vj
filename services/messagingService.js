@@ -212,7 +212,7 @@ async function enviarMenuActividades(bot, remitente, notice = '') {
         header: 'Experiencias locales',
         body: `${notice ? `⚠️ ${notice}\n\n` : ''}Descubre actividades para disfrutar durante tu estadía.`,
         buttonText: 'Ver experiencias',
-        footer: 'Selecciona una para conocer los detalles',
+        footer: '“menú” para inicio · “volver” para repetir',
         sections: [{
             title: 'Actividades',
             rows: actividades.slice(0, 10).map((item, index) => ({

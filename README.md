@@ -34,6 +34,7 @@ Copie `.env.example`; nunca versione `.env` ni credenciales.
 
 - `PORT`: puerto HTTP asignado por la plataforma.
 - `APP_ENV`: identidad visible del despliegue (`local`, `qa` o `production`). Este ambiente debe usar `qa`; el despliegue definitivo debe establecer `production` de forma explícita.
+- `REQUIRE_EMPTY_PRODUCTION_DATA`: al usar `true` en el primer despliegue definitivo, `/ready` exige que no existan huéspedes, reservas ni comprobantes previos y guarda una marca persistente al verificarlo.
 - `DB_PATH`: ruta del SQLite persistente.
 - `CORS_ORIGIN`: orígenes permitidos separados por coma.
 - `JWT_SECRET`: secreto aleatorio de al menos 32 bytes.

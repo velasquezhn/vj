@@ -9,7 +9,7 @@ El ambiente público actual es **QA** aunque ejecute el runtime de Node.js en mo
 - [x] Definir `APP_ENV=production` y mantener una sola réplica mientras se use SQLite.
 - [x] Configurar `/ready` como healthcheck y confirmar respuesta `ready`.
 - [ ] Desplegar producción únicamente desde la rama `production`; promover a esa rama sólo un commit validado primero en QA.
-- [ ] Confirmar que el volumen de producción no contiene reservas, clientes ni comprobantes de QA.
+- [ ] Activar `REQUIRE_EMPTY_PRODUCTION_DATA=true`; el primer `/ready` exitoso deja una marca persistente sólo si no encuentra huéspedes, reservas ni comprobantes de QA.
 
 ## 2. Datos y acceso
 

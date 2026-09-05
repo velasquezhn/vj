@@ -21,6 +21,7 @@ function loadConfig({ validateWhatsApp = process.env.NODE_ENV === 'production' }
     appEnv: String(process.env.APP_ENV || (nodeEnv === 'production' ? 'qa' : 'local')).toLowerCase(),
     port: Number(process.env.PORT || 4000),
     databasePath: path.resolve(process.env.DB_PATH || './data/bot_database.sqlite'),
+    requireEmptyProductionData: parseBoolean('REQUIRE_EMPTY_PRODUCTION_DATA', false),
     jwtSecret: process.env.JWT_SECRET || '',
     corsOrigins: (process.env.CORS_ORIGIN || 'http://localhost:5173')
       .split(',').map((value) => value.trim()).filter(Boolean),

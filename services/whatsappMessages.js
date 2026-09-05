@@ -98,6 +98,22 @@ function normalizeConversationInput(value) {
   return aliases[normalized] || original;
 }
 
+function normalizeMainMenuSelection(value) {
+  const normalized = normalizeConversationInput(value);
+  const key = String(normalized || '').trim().toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const aliases = {
+    alojamiento: '1', alojamientos: '1', cabana: '1', cabanas: '1', hospedaje: '1',
+    reservar: '2', reserva: '2', reservacion: '2', reservaciones: '2',
+    experiencia: '3', experiencias: '3', actividad: '3', actividades: '3',
+    contacto: '4', asesor: '4',
+    clima: '5', tiempo: '5', pronostico: '5',
+    preguntas: '6', frecuentes: '6', 'preguntas frecuentes': '6', pagos: '6', informacion: '6',
+    'mi reserva': '7', 'estado de reserva': '7', estado: '7'
+  };
+  return aliases[key] || normalized;
+}
+
 module.exports = {
   MAIN_MENU_ROWS,
   NAVIGATION_FOOTER,
@@ -105,5 +121,6 @@ module.exports = {
   reservationStart,
   contactMessage,
   faqMessage,
-  normalizeConversationInput
+  normalizeConversationInput,
+  normalizeMainMenuSelection
 };

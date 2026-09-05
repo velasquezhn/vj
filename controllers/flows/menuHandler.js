@@ -5,11 +5,7 @@ const { reservationStart } = require('../../services/whatsappMessages');
 
 // Handlers específicos para cada estado
 async function handleMenuPrincipal(bot, remitente, mensajeTexto, establecerEstado) {
-    if (mensajeTexto.trim() === '1') {
-        await enviarMenuCabanas(bot, remitente);
-    } else {
-        await handleMainMenuOptions(bot, remitente, mensajeTexto.trim(), establecerEstado);
-    }
+    await handleMainMenuOptions(bot, remitente, mensajeTexto.trim(), establecerEstado);
 }
 
 async function handleListaCabanas(bot, remitente, mensajeTexto, establecerEstado) {
@@ -19,7 +15,10 @@ async function handleListaCabanas(bot, remitente, mensajeTexto, establecerEstado
     }
 
     const input = mensajeTexto.trim();
-    if (!/^\d+$/.test(input)) {
+    const normalized = input.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (/^(?:alojamientos?|cabanas?|hospedaje)$/.test(normalized)) {
+        await enviarMenuCabanas(bot, remitente);
+    } else if (!/^\d+$/.test(input)) {
         await enviarMenuCabanas(bot, remitente, 'No reconocí la selección. Responde con el número de un alojamiento.');
     } else {
         await enviarDetalleCabaña(bot, remitente, Number(input));
@@ -33,8 +32,9 @@ async function handleDetalleCabana(bot, remitente, mensajeTexto, establecerEstad
         MENU_PRINCIPAL: '0'
     };
 
-    switch (mensajeTexto.trim()) {
+    switch (mensajeTexto.trim().toLowerCase()) {
         case OPCIONES.VOLVER:
+        case 'ver alojamientos':
             await enviarMenuCabanas(bot, remitente);
             break;
             
@@ -56,7 +56,7 @@ async function handleDetalleCabana(bot, remitente, mensajeTexto, establecerEstad
             
         default:
             await bot.sendMessage(remitente, {
-                text: 'No reconocí esa opción. Usa los botones o responde 1, 2 o 0. También puedes escribir “menú”.'
+                text: 'No reconocí esa opción. Responde 1 para ver alojamientos, 2 para reservar o 0 para el menú principal.'
             });
             // Reenviar menú actual manteniendo el estado
             break;

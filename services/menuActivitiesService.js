@@ -40,7 +40,8 @@ const loadMenuActivities = async () => {
         orden_menu,
         created_at,
         updated_at
-      FROM Activities 
+      FROM Activities
+      WHERE activo = 1 AND incluir_en_menu = 1
       ORDER BY orden_menu ASC, orden ASC, nombre ASC
     `);
     
