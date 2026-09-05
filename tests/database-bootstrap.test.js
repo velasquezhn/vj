@@ -116,6 +116,26 @@ describe('database bootstrap', () => {
     execFileSync(process.execPath, ['-e', script], { cwd: path.join(__dirname, '..'), env });
   });
 
+  test('deduplicates identical delivery statuses but keeps real transitions', async () => {
+    const env = { ...process.env, DB_PATH: dbPath, NODE_ENV: 'test' };
+    execFileSync(process.execPath, ['scripts/migrate-database.js'], { cwd: path.join(__dirname, '..'), env });
+    const script = `
+      const { createEventStore } = require('./routes/whatsappWebhook');
+      const { closeDatabase } = require('./db');
+      (async () => {
+        const store = createEventStore();
+        if (!await store.claim('wamid.status.1', 'status', 'sent')) process.exitCode = 2;
+        if (await store.claim('wamid.status.1', 'status', 'sent')) process.exitCode = 3;
+        if (!await store.claim('wamid.status.1', 'status', 'delivered')) process.exitCode = 4;
+        if (await store.claim('wamid.status.1', 'status', 'delivered')) process.exitCode = 5;
+        await closeDatabase();
+      })().catch((error) => { console.error(error); process.exit(1); });
+    `;
+    execFileSync(process.execPath, ['-e', script], { cwd: path.join(__dirname, '..'), env });
+    const rows = await query(dbPath, `SELECT status FROM WhatsAppEvents WHERE message_id = 'wamid.status.1'`);
+    expect(rows).toEqual([{ status: 'delivered' }]);
+  });
+
   test('prevents two active reservations from occupying the same cabin and dates', async () => {
     const env = { ...process.env, DB_PATH: dbPath, NODE_ENV: 'test' };
     execFileSync(process.execPath, ['scripts/migrate-database.js'], { cwd: path.join(__dirname, '..'), env });
@@ -165,7 +185,10 @@ describe('database bootstrap', () => {
           nombre: 'Cliente Prueba', telefono: '50487373838', personas: 2, alojamiento: 'tortuga',
           fechaEntrada: '10/09/2026', fechaSalida: '12/09/2026', noches: 2, precioTotal: 3000
         }, {});
-        if (!sent.some((item) => item.text && item.text.includes('SOLICITUD REGISTRADA'))) process.exitCode = 2;
+            if (!sent.some((item) => {
+                  const text = [item.text, item.interactive?.header?.text, item.interactive?.body?.text].filter(Boolean).join(' ');
+              return /solicitud registrada/i.test(text);
+            })) process.exitCode = 2;
         await closeDatabase();
       })().catch((error) => { console.error(error); process.exit(1); });
     `;

@@ -8,19 +8,19 @@ const { buildCabinDetails, cabinMedia } = require('./whatsappCabinPresentationSe
 const { buildCabinGalleryUrl } = require('./whatsappCabinGalleryService');
 const { MAIN_MENU_ROWS, mainMenuFallback, NAVIGATION_FOOTER } = require('./whatsappMessages');
 
-async function enviarMenuPrincipal(bot, remitente) {
+async function enviarMenuPrincipal(bot, remitente, notice = '') {
     try {
         await establecerEstado(remitente, 'MENU_PRINCIPAL');
         await sendList(bot, remitente, {
             header: 'Villas Julie',
-            body: 'Te ayudamos a conocer los alojamientos, solicitar una reserva y consultar su estado. ¿Qué deseas hacer?',
+            body: `${notice ? `⚠️ ${notice}\n\n` : ''}Te ayudamos a conocer los alojamientos, solicitar una reserva y consultar su estado. ¿Qué deseas hacer?`,
             footer: NAVIGATION_FOOTER,
             buttonText: 'Ver opciones',
             sections: [{
                 title: 'Servicios',
                 rows: MAIN_MENU_ROWS
             }],
-            fallbackText: mainMenuFallback()
+            fallbackText: mainMenuFallback(notice)
         });
         logger.info(`Menú principal enviado a ${remitente}`);
     } catch (error) {
@@ -41,7 +41,7 @@ async function enviarMenuPrincipal(bot, remitente) {
     }
 }
 
-async function enviarMenuCabanas(bot, remitente) {
+async function enviarMenuCabanas(bot, remitente, notice = '') {
     try {
         const tipos = await loadMenuCabinTypes();
         
@@ -56,13 +56,13 @@ async function enviarMenuCabanas(bot, remitente) {
         
         await establecerEstado(remitente, 'LISTA_CABAÑAS');
         
-        const menuCabanas = `🏡 *Villas Julie — Alojamientos*\n\n` +
+        const menuCabanas = `${notice ? `⚠️ ${notice}\n\n` : ''}🏡 *Villas Julie — Alojamientos*\n\n` +
             tipos.map((tipo, index) => `${index + 1}. ${tipo.nombre}`).join('\n') +
             `\n\n0. Menú principal\n\nResponde con el número del alojamiento que deseas conocer.`;
 
         await sendList(bot, remitente, {
             header: 'Nuestros alojamientos',
-            body: 'Selecciona un tipo para ver capacidad, precio, descripción y fotografías.',
+            body: `${notice ? `⚠️ ${notice}\n\n` : ''}Selecciona un tipo para ver capacidad, precio, descripción y fotografías.`,
             footer: 'Precios por noche en lempiras · “menú” para volver',
             buttonText: 'Ver alojamientos',
             sections: [{
@@ -101,9 +101,10 @@ async function enviarDetalleCabaña(bot, remitente, seleccion) {
     try {
         const tipos = await loadMenuCabinTypes();
         
-        const seleccionNum = parseInt(seleccion);
-        if (isNaN(seleccionNum) || seleccionNum < 1 || seleccionNum > tipos.length) {
-            await enviarMenuCabanas(bot, remitente);
+        const rawSelection = String(seleccion ?? '').trim();
+        const seleccionNum = /^\d+$/.test(rawSelection) ? Number(rawSelection) : NaN;
+        if (!Number.isInteger(seleccionNum) || seleccionNum < 1 || seleccionNum > tipos.length) {
+            await enviarMenuCabanas(bot, remitente, `Selecciona un número entre 1 y ${tipos.length}.`);
             return;
         }
         
@@ -192,17 +193,24 @@ async function enviarDetalleCabaña(bot, remitente, seleccion) {
     }
 }
 
-async function enviarMenuActividades(bot, remitente) {
+async function enviarMenuActividades(bot, remitente, notice = '') {
     const actividades = await loadMenuActivities();
     const fallback = actividades.length
-        ? `🌴 *Experiencias locales*\n\n${actividades.map((item, index) => `${index + 1}. ${item.nombre}`).join('\n')}\n\n0. Menú principal\n\nResponde con el número de una experiencia.`
+        ? `${notice ? `⚠️ ${notice}\n\n` : ''}🌴 *Experiencias locales*\n\n${actividades.map((item, index) => `${index + 1}. ${item.nombre}`).join('\n')}\n\n0. Menú principal\n\nResponde con el número de una experiencia.`
         : '⚠️ No hay experiencias disponibles en este momento.';
-    if (!actividades.length) return bot.sendMessage(remitente, { text: fallback });
+    if (!actividades.length) {
+        await establecerEstado(remitente, 'MENU_PRINCIPAL');
+        return sendReplyButtons(bot, remitente, {
+            body: fallback,
+            footer: NAVIGATION_FOOTER,
+            buttons: [{ id: 'main_menu', title: 'Menú principal' }]
+        });
+    }
 
     await establecerEstado(remitente, 'actividades');
     return sendList(bot, remitente, {
         header: 'Experiencias locales',
-        body: 'Descubre actividades para disfrutar durante tu estadía.',
+        body: `${notice ? `⚠️ ${notice}\n\n` : ''}Descubre actividades para disfrutar durante tu estadía.`,
         buttonText: 'Ver experiencias',
         footer: 'Selecciona una para conocer los detalles',
         sections: [{

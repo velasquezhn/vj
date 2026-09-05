@@ -8,6 +8,30 @@ const fs = require('fs');
 const isProduction = process.env.NODE_ENV === 'production';
 const logDir = process.env.LOG_DIR || path.join(__dirname, '../logs');
 
+const SENSITIVE_KEYS = /^(authorization|token|access_token|refresh_token|password|secret|appsecret|apikey|api_key|phone|phone_number|recipient|remitente)$/i;
+
+function redactText(value) {
+  return String(value)
+    .replace(/([?&](?:appid|access_token|token)=)[^&\s]+/gi, '$1[REDACTED]')
+    .replace(/(bearer\s+)[a-z0-9._~-]+/gi, '$1[REDACTED]')
+    .replace(/\b\d{8,15}(?=@s\.whatsapp\.net|\b)/g, '[PHONE]');
+}
+
+function redactValue(value, key = '', seen = new WeakSet()) {
+  if (SENSITIVE_KEYS.test(key)) return '[REDACTED]';
+  if (typeof value === 'string') return redactText(value);
+  if (!value || typeof value !== 'object') return value;
+  if (seen.has(value)) return '[CIRCULAR]';
+  seen.add(value);
+  if (Array.isArray(value)) return value.map((item) => redactValue(item, '', seen));
+  for (const [childKey, childValue] of Object.entries(value)) {
+    value[childKey] = redactValue(childValue, childKey, seen);
+  }
+  return value;
+}
+
+const redactSensitive = winston.format((info) => redactValue(info));
+
 // Crear directorio de logs si no existe
 if (!fs.existsSync(logDir)) {
   fs.mkdirSync(logDir, { recursive: true });
@@ -44,6 +68,7 @@ const logger = winston.createLogger({
   level: isProduction ? 'info' : 'debug',
   format: combine(
     winston.format.splat(),
+    redactSensitive(),
     winston.format((info) => {
       // Añadir información de proceso
       info.pid = process.pid;
@@ -132,3 +157,5 @@ logger.performance = (message, meta = {}) => {
 };
 
 module.exports = logger;
+module.exports.redactText = redactText;
+module.exports.redactValue = redactValue;

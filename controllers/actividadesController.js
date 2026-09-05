@@ -3,14 +3,14 @@ const { safeSend } = require('../utils/utils'); // Asumiendo que safeSend está 
 
 // Función para generar detalles textuales de una actividad
 const generateActivityDetails = (actividad) => {
-  let detalles = `� *${actividad.nombre}*\n`;
+  let detalles = `🌴 *${actividad.nombre}*\n`;
   
   if (actividad.categoria) {
-    detalles += `� Categoría: ${actividad.categoria}\n`;
+    detalles += `🏷️ Categoría: ${actividad.categoria}\n`;
   }
   
   if (actividad.ubicacion && actividad.ubicacion.direccion) {
-    detalles += `�📍 Ubicación: ${actividad.ubicacion.direccion}\n`;
+    detalles += `📍 Ubicación: ${actividad.ubicacion.direccion}\n`;
   }
   
   if (actividad.duracion) {
@@ -74,61 +74,14 @@ const generateActivityDetails = (actividad) => {
   return detalles;
 };
 
-// Handler para flujo de actividades
-const flowActividadesHandler = async (ctx, { flowDynamic, endFlow }) => {
-  try {
-    const actividades = await loadActividades();
-    
-    if (!actividades || actividades.length === 0) {
-      await flowDynamic('⚠️ No hay actividades disponibles en este momento.');
-      return endFlow();
-    }
-    
-    // Generar menú dinámico
-    const menu = [
-      'Tenemos estas actividades disponibles:',
-      ...actividades.map((act, idx) => `${idx + 1}. ${act.nombre}`),
-      'Selecciona el número de la actividad para ver más detalles.'
-    ].join('\n');
-    
-    await flowDynamic(menu);
-
-    // Validar selección
-    const seleccion = parseInt(ctx.body.trim());
-    if (isNaN(seleccion)) {
-      await flowDynamic('⚠️ Por favor ingresa solo el número de la actividad.');
-      return endFlow();
-    }
-    
-    if (seleccion < 1 || seleccion > actividades.length) {
-      await flowDynamic(`⚠️ Selección inválida. Ingresa un número entre 1 y ${actividades.length}.`);
-      return endFlow();
-    }
-    
-    const actividad = actividades[seleccion - 1];
-    const detalles = generateActivityDetails(actividad);
-    
-    await flowDynamic(detalles);
-    
-    // Notificar sobre fotos si existen
-    if (actividad.multimedia) {
-      await flowDynamic('🖼️ Enviando fotos de la actividad...');
-    }
-    
-  } catch (error) {
-    console.error('Error en flowActividadesHandler:', error);
-    await flowDynamic('⚠️ Ocurrió un error al procesar las actividades. Por favor intenta más tarde.');
-    return endFlow();
-  }
-};
-
 // Enviar detalles de actividad específica
 const sendActividadDetails = async (bot, remitente, seleccion, establecerEstado = null) => {
   try {
     const actividades = await loadActividades();
     
     if (!actividades || actividades.length === 0) {
-      await safeSend(bot, remitente, '⚠️ No hay actividades disponibles en este momento.');
+      const { enviarMenuPrincipal } = require('../services/messagingService');
+      await enviarMenuPrincipal(bot, remitente);
       return;
     }
     
@@ -178,12 +131,13 @@ const sendActividadDetails = async (bot, remitente, seleccion, establecerEstado 
     }
     
   } catch (error) {
-    console.error('Error en sendActividadDetails:', error);
-    await safeSend(bot, remitente, '⚠️ Ocurrió un error al mostrar la actividad. Por favor intenta más tarde.');
+    const logger = require('../config/logger');
+    logger.error('Error mostrando actividad por WhatsApp', { error: error.message });
+    const { enviarMenuActividades } = require('../services/messagingService');
+    await enviarMenuActividades(bot, remitente, 'No pudimos mostrar esa experiencia. Selecciona otra o vuelve al menú.');
   }
 };
 
 module.exports = { 
-  flowActividadesHandler, 
   sendActividadDetails 
 };

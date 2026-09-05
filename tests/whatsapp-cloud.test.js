@@ -72,7 +72,25 @@ describe('WhatsApp Business Cloud API', () => {
     expect(messageText({ interactive: { list_reply: { id: 'main_2', title: 'Reservar ahora' } } })).toBe('2');
     expect(messageText({ interactive: { button_reply: { id: 'dates_yes', title: 'Sí, confirmar' } } })).toBe('sí');
     expect(normalizeInteractiveReply('detail_menu')).toBe('0');
+    expect(normalizeInteractiveReply('weather_other')).toBe('2');
+    expect(normalizeInteractiveReply('weather_retry')).toBe('1');
+    expect(normalizeInteractiveReply('post_cancel_yes')).toBe('1');
+    expect(normalizeInteractiveReply('help_request')).toBe('ayuda');
+    expect(normalizeInteractiveReply('main_7')).toBe('7');
     expect(normalizeInteractiveReply('texto-libre')).toBe('texto-libre');
+  });
+
+  test('el respaldo escrito conserva los comandos reales de navegación', async () => {
+    const bot = { sendMessage: jest.fn().mockRejectedValueOnce(new Error('unsupported')).mockResolvedValueOnce({ ok: true }) };
+    await sendReplyButtons(bot, '50499990000', {
+      body: 'Consulta finalizada',
+      buttons: [
+        { id: 'weather_retry', title: 'Actualizar' },
+        { id: 'weather_other', title: 'Otra ciudad' },
+        { id: 'main_menu', title: 'Menú principal' }
+      ]
+    });
+    expect(bot.sendMessage.mock.calls[1][1].text).toMatch(/1\. Actualizar[\s\S]*2\. Otra ciudad[\s\S]*0\. Menú principal/);
   });
 
   test('limita botones y usa respaldo de texto si Meta rechaza el interactivo', async () => {

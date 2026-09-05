@@ -3,6 +3,7 @@ const express = require('express');
 const logger = require('../config/logger');
 const { loadConfig } = require('../config/env');
 const { WhatsAppCloudService } = require('../services/whatsappCloudService');
+const { BUTTON_IDS } = require('../services/whatsappConversation');
 
 const processed = new Map();
 const DEDUPE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -34,9 +35,14 @@ function normalizeInteractiveReply(value) {
   const numbered = reply.match(/^(?:main|cabin|activity|post)_(\d+)$/);
   if (numbered) return numbered[1];
   const commands = {
-    detail_back: '1', detail_reserve: '2', detail_menu: '0',
-    dates_yes: 'sí', dates_no: 'no', terms_accept: 'sí', terms_decline: 'no',
-    activities_more: '1', main_menu: 'menu', reservation_start: '2'
+    [BUTTON_IDS.DETAIL_BACK]: '1', [BUTTON_IDS.DETAIL_RESERVE]: '2', [BUTTON_IDS.DETAIL_MENU]: '0',
+    [BUTTON_IDS.DATES_YES]: 'sí', [BUTTON_IDS.DATES_NO]: 'no',
+    [BUTTON_IDS.TERMS_ACCEPT]: 'sí', [BUTTON_IDS.TERMS_DECLINE]: 'no',
+    [BUTTON_IDS.ACTIVITIES_MORE]: '1', [BUTTON_IDS.MAIN_MENU]: 'menu',
+    [BUTTON_IDS.RESERVATION_START]: '2', [BUTTON_IDS.WEATHER_TELA]: '1',
+    [BUTTON_IDS.WEATHER_OTHER]: '2', [BUTTON_IDS.WEATHER_RETRY]: '1',
+    [BUTTON_IDS.POST_CANCEL_YES]: '1', [BUTTON_IDS.POST_CANCEL_NO]: '2',
+    [BUTTON_IDS.HELP_REQUEST]: 'ayuda'
   };
   return commands[reply] || reply;
 }
@@ -53,11 +59,16 @@ function createEventStore() {
   return {
     async claim(id, type, status = null) {
       if (type === 'status') {
-        await runExecute(`
-          INSERT INTO WhatsAppEvents(message_id, event_type, status) VALUES (?, 'status', ?)
-          ON CONFLICT(message_id) DO UPDATE SET status = excluded.status, received_at = CURRENT_TIMESTAMP
-        `, [id, status]);
-        return true;
+        const inserted = await runExecute(
+          `INSERT OR IGNORE INTO WhatsAppEvents(message_id, event_type, status) VALUES (?, 'status', ?)`,
+          [id, status]
+        );
+        if (inserted.changes === 1) return true;
+        const updated = await runExecute(`UPDATE WhatsAppEvents
+          SET status = ?, received_at = CURRENT_TIMESTAMP
+          WHERE message_id = ? AND event_type = 'status' AND COALESCE(status, '') <> COALESCE(?, '')`,
+        [status, id, status]);
+        return updated.changes === 1;
       }
       const result = await runExecute(
         'INSERT OR IGNORE INTO WhatsAppEvents(message_id, event_type, status) VALUES (?, ?, ?)',
@@ -120,8 +131,9 @@ function createWhatsAppWebhook(options = {}) {
       for (const event of extractEvents(payload)) {
         try {
         if (event.kind === 'status') {
-          await eventStore.claim(event.status.id, 'status', event.status.status);
-          logger.info('Estado de mensaje WhatsApp', { messageId: event.status.id, status: event.status.status });
+          if (await eventStore.claim(event.status.id, 'status', event.status.status)) {
+            logger.info('Estado de mensaje WhatsApp', { messageId: event.status.id, status: event.status.status });
+          }
           continue;
         }
         const { message } = event;

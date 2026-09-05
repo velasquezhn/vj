@@ -6,9 +6,21 @@
 const { runQuery, runExecute } = require('../db');
 const logger = require('../config/logger');
 
-// Cache en memoria para mejorar rendimiento (opcional)
 const estadosCache = new Map();
-const CACHE_DURATION = 5 * 60 * 1000; // 5 minutos
+
+function sessionTtlMs(state) {
+  const defaultMinutes = Math.min(Math.max(Number(process.env.CONVERSATION_SESSION_TTL_MINUTES || 60), 5), 1440);
+  const longLivedStates = new Set([
+    'esperando_pago', 'ESPERANDO_PAGO', 'esperando_autorizacion',
+    'esperando_confirmacion', 'RESERVA_PENDIENTE'
+  ]);
+  const minutes = longLivedStates.has(state) ? Math.max(defaultMinutes, 24 * 60) : defaultMinutes;
+  return minutes * 60 * 1000;
+}
+
+function sqliteUtc(date) {
+  return date.toISOString().slice(0, 19).replace('T', ' ');
+}
 
 /**
  * Inicializa las tablas necesarias para el estado persistente
@@ -49,29 +61,11 @@ async function initializeStateTables() {
  */
 async function establecerEstado(numero, estado, datos = {}) {
   try {
-    logger.info(`Estableciendo estado para ${numero}`, {
-      estado,
-      datos: datos,
-      userId: numero
-    });
+    logger.info('Estableciendo estado de conversación', { estado, userId: numero });
     
     // Calcular fecha de expiración según el estado
     const now = new Date();
-    let expiresAt = new Date(now.getTime() + (60 * 60 * 1000)); // 1 hora por defecto
-    
-    // Estados que requieren más tiempo
-    const longLivedStates = [
-      'esperando_pago', 
-      'ESPERANDO_PAGO', 
-      'esperando_autorizacion',
-      'esperando_confirmacion',
-      'post_reserva_comprobante_enviado',
-      'RESERVA_PENDIENTE'
-    ];
-    
-    if (longLivedStates.includes(estado)) {
-      expiresAt = new Date(now.getTime() + (24 * 60 * 60 * 1000)); // 24 horas
-    }
+    const expiresAt = new Date(now.getTime() + sessionTtlMs(estado));
     
     // Si el estado es null, eliminar el registro
     if (!estado || estado === null) {
@@ -90,7 +84,7 @@ async function establecerEstado(numero, estado, datos = {}) {
       VALUES (?, ?, ?, datetime('now'), ?)
     `;
     
-    await runExecute(sql, [numero, estado, datosJson, expiresAt.toISOString()]);
+    await runExecute(sql, [numero, estado, datosJson, sqliteUtc(expiresAt)]);
     
     // Actualizar cache
     estadosCache.set(numero, {
@@ -110,12 +104,12 @@ async function establecerEstado(numero, estado, datos = {}) {
       error: error.message,
       stack: error.stack,
       estado,
-      datos
+      dataKeys: Object.keys(datos || {})
     });
     
     // Fallback a memoria si falla la BD
     const estadosMemoria = global.estadosMemoriaFallback || new Map();
-    estadosMemoria.set(numero, { estado, datos, timestamp: Date.now() });
+    estadosMemoria.set(numero, { estado, datos, timestamp: Date.now(), expiresAt: Date.now() + sessionTtlMs(estado) });
     global.estadosMemoriaFallback = estadosMemoria;
     
     logger.warn(`Usando fallback de memoria para ${numero}`);
@@ -139,15 +133,15 @@ async function obtenerEstado(numero) {
     }
     
     // Consultar base de datos
-    const sql = `
-      SELECT state, data, expires_at 
-      FROM UserStates 
-      WHERE user_id = ? AND expires_at > datetime('now')
-    `;
+    if (cached) estadosCache.delete(numero);
+
+    const sql = `SELECT state, data, expires_at,
+      CASE WHEN datetime(expires_at) > datetime('now') THEN 1 ELSE 0 END AS active
+      FROM UserStates WHERE user_id = ?`;
     
     const results = await runQuery(sql, [numero]);
     
-    if (results.length > 0) {
+    if (results.length > 0 && results[0].active === 1) {
       const row = results[0];
       let datos = {};
       
@@ -162,7 +156,7 @@ async function obtenerEstado(numero) {
         estado: row.state,
         datos,
         timestamp: Date.now(),
-        expiresAt: new Date(row.expires_at).getTime()
+      expiresAt: new Date(`${row.expires_at.replace(' ', 'T')}Z`).getTime()
       };
       
       // Actualizar cache
@@ -172,6 +166,11 @@ async function obtenerEstado(numero) {
       return estado;
     }
     
+    if (results.length > 0) {
+      await runExecute('DELETE FROM UserStates WHERE user_id = ?', [numero]);
+      return { estado: 'MENU_PRINCIPAL', datos: {}, expired: true };
+    }
+
     // No hay estado válido, retornar estado por defecto
     logger.debug(`No se encontró estado válido para ${numero}, retornando MENU_PRINCIPAL`);
     return { estado: 'MENU_PRINCIPAL', datos: {} };
@@ -183,7 +182,7 @@ async function obtenerEstado(numero) {
     const estadosMemoria = global.estadosMemoriaFallback || new Map();
     const fallbackState = estadosMemoria.get(numero);
     
-    if (fallbackState) {
+    if (fallbackState?.expiresAt > Date.now()) {
       logger.warn(`Usando fallback de memoria para ${numero}`);
       return fallbackState;
     }
@@ -198,7 +197,7 @@ async function obtenerEstado(numero) {
 async function cleanupExpiredStates() {
   try {
     const result = await runExecute(
-      'DELETE FROM UserStates WHERE expires_at < datetime("now")'
+      'DELETE FROM UserStates WHERE datetime(expires_at) <= datetime("now")'
     );
     
     const eliminados = result.changes || 0;

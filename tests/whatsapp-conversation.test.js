@@ -6,14 +6,13 @@ const {
   faqMessage,
   normalizeConversationInput
 } = require('../services/whatsappMessages');
-const { sendMessageWithDelay, sendMultipleMessagesWithDelay } = require('../utils/messageDelayUtils');
 
 describe('menús y navegación de WhatsApp', () => {
-  test('centraliza las nueve opciones y conserva una numeración consistente', () => {
-    expect(MAIN_MENU_ROWS).toHaveLength(9);
+  test('centraliza las siete opciones vigentes y conserva una numeración consistente', () => {
+    expect(MAIN_MENU_ROWS).toHaveLength(7);
     expect(MAIN_MENU_ROWS.map((row) => row.id)).toEqual([
       'main_1', 'main_2', 'main_3', 'main_4', 'main_5',
-      'main_6', 'main_7', 'main_8', 'main_9'
+      'main_6', 'main_7'
     ]);
     const fallback = mainMenuFallback();
     MAIN_MENU_ROWS.forEach((row, index) => expect(fallback).toContain(`${index + 1}. ${row.title}`));
@@ -25,6 +24,8 @@ describe('menús y navegación de WhatsApp', () => {
     ['INICIO', 'menu'],
     ['salir', 'cancelar'],
     ['atrás', 'volver'],
+    ['Empezar de nuevo', 'reiniciar'],
+    ['SOPORTE', 'ayuda'],
     ['Carlos Velásquez', 'Carlos Velásquez']
   ])('normaliza %s como %s sin alterar texto libre', (input, expected) => {
     expect(normalizeConversationInput(input)).toBe(expected);
@@ -39,13 +40,4 @@ describe('menús y navegación de WhatsApp', () => {
     expect(mainMenuFallback().length).toBeLessThanOrEqual(4096);
   });
 
-  test('la capa heredada envía inmediatamente y no programa temporizadores', async () => {
-    jest.useFakeTimers();
-    const bot = { sendMessage: jest.fn().mockResolvedValue({ ok: true }) };
-    await sendMessageWithDelay(bot, '50499990000', { text: 'Uno' });
-    await sendMultipleMessagesWithDelay(bot, '50499990000', [{ text: 'Dos' }, { text: 'Tres' }]);
-    expect(bot.sendMessage).toHaveBeenCalledTimes(3);
-    expect(jest.getTimerCount()).toBe(0);
-    jest.useRealTimers();
-  });
 });

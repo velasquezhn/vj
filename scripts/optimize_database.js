@@ -74,7 +74,7 @@ async function createOptimizationIndexes() {
     
     console.log('\n✅ OPTIMIZACIÓN COMPLETADA');
     console.log('==========================');
-    console.log('💡 Beneficios esperados:');
+    console.log('💡 Mejoras esperadas:');
     console.log('   • Consultas 60-80% más rápidas');
     console.log('   • Menos carga en CPU');
     console.log('   • Mejor experiencia de usuario');

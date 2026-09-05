@@ -5,15 +5,13 @@ const MAIN_MENU_ROWS = Object.freeze([
   { id: 'main_4', title: '📲 Contacto', description: 'Habla con nuestro equipo' },
   { id: 'main_5', title: '🌦️ Clima', description: 'Pronóstico para tu visita' },
   { id: 'main_6', title: '❓ Preguntas frecuentes', description: 'Horarios, servicios y pagos' },
-  { id: 'main_7', title: '📸 Compartir experiencia', description: 'Envíanos una publicación de tu visita' },
-  { id: 'main_8', title: '🛎️ Mi reserva', description: 'Estado, pagos, cambios y asistencia' },
-  { id: 'main_9', title: '💎 Beneficios', description: 'Consulta promociones disponibles' }
+  { id: 'main_7', title: '🛎️ Mi reserva', description: 'Estado, pagos, cambios y asistencia' }
 ]);
 
-const NAVIGATION_FOOTER = 'Escribe “menú” para volver al inicio';
+const NAVIGATION_FOOTER = '“menú” para inicio · “ayuda” para asistencia';
 
-function mainMenuFallback() {
-  return `🏡 *Villas Julie*
+function mainMenuFallback(notice = '') {
+  return `${notice ? `⚠️ ${notice}\n\n` : ''}🏡 *Villas Julie*
 
 ${MAIN_MENU_ROWS.map((row, index) => `${index + 1}. ${row.title}`).join('\n')}
 
@@ -37,7 +35,7 @@ Si omites el año, usaré la próxima fecha disponible. En fechas numéricas int
 
 Antes de continuar te mostraré exactamente las fechas entendidas para que las confirmes.
 
-Escribe *cancelar* para salir o *menú* para volver al inicio.`;
+Escribe *reiniciar* para empezar de nuevo, *cancelar* para salir, *ayuda* para asistencia o *menú* para volver al inicio.`;
 }
 
 function contactMessage() {
@@ -77,10 +75,6 @@ Primero envías la solicitud. Un administrador autoriza el pago y te comparte la
 El anticipo configurado actualmente es del ${depositPercentage}%. No realices pagos antes de recibir la autorización.`;
 }
 
-function invalidOption(validOptions) {
-  return `No reconocí esa opción. ${validOptions}\n\n${NAVIGATION_FOOTER}.`;
-}
-
 function normalizeConversationInput(value) {
   const original = String(value || '').trim();
   const input = original.toLowerCase();
@@ -94,7 +88,12 @@ function normalizeConversationInput(value) {
     cancelar: 'cancelar',
     atras: 'volver',
     regresar: 'volver',
-    volver: 'volver'
+    volver: 'volver',
+    reiniciar: 'reiniciar',
+    'empezar de nuevo': 'reiniciar',
+    ayuda: 'ayuda',
+    soporte: 'ayuda',
+    help: 'ayuda'
   };
   return aliases[normalized] || original;
 }
@@ -106,6 +105,5 @@ module.exports = {
   reservationStart,
   contactMessage,
   faqMessage,
-  invalidOption,
   normalizeConversationInput
 };

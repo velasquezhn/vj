@@ -63,6 +63,7 @@ const PORT = config.port;
 const whatsappEnabled = config.whatsapp.enabled;
 const whatsappConfigured = whatsappEnabled && ['accessToken', 'phoneNumberId', 'verifyToken', 'appSecret']
   .every((key) => Boolean(config.whatsapp[key]));
+const weatherConfigured = Boolean(String(process.env.OPENWEATHER_API_KEY || '').trim());
 const REQUIRED_TABLES = ['Users', 'Cabins', 'Reservations', 'UserStates', 'WhatsAppEvents'];
 
 async function assertDatabaseReady() {
@@ -92,6 +93,7 @@ app.get('/health', (_req, res) => res.status(200).json({
   runtimeMode: config.nodeEnv,
   whatsappEnabled,
   whatsappConfigured,
+  weatherConfigured,
   uptimeSeconds: Math.floor(process.uptime())
 }));
 app.get('/ready', async (_req, res) => {
@@ -99,10 +101,10 @@ app.get('/ready', async (_req, res) => {
     await assertDatabaseReady();
     const ready = !whatsappEnabled || whatsappConfigured;
     return res.status(ready ? 200 : 503).json({
-      status: ready ? 'ready' : 'not_ready', database: 'ok', whatsappEnabled, whatsappConfigured
+      status: ready ? 'ready' : 'not_ready', database: 'ok', whatsappEnabled, whatsappConfigured, weatherConfigured
     });
   } catch (error) {
-    return res.status(503).json({ status: 'not_ready', database: 'error', whatsappEnabled, whatsappConfigured });
+    return res.status(503).json({ status: 'not_ready', database: 'error', whatsappEnabled, whatsappConfigured, weatherConfigured });
   }
 });
 

@@ -1,6 +1,5 @@
 const { enviarMenuPrincipal, enviarMenuCabanas, enviarDetalleCabaña } = require('../../services/messagingService');
 const { handleMainMenuOptions } = require('../mainMenuHandler');
-const { exportarReservasAExcel } = require('../../services/reservaExportService');
 const logger = require('../../config/logger');
 const { reservationStart } = require('../../services/whatsappMessages');
 
@@ -8,18 +7,6 @@ const { reservationStart } = require('../../services/whatsappMessages');
 async function handleMenuPrincipal(bot, remitente, mensajeTexto, establecerEstado) {
     if (mensajeTexto.trim() === '1') {
         await enviarMenuCabanas(bot, remitente);
-    } else if (mensajeTexto.trim().toLowerCase() === 'exportar reservas') {
-        try {
-            const rutaArchivo = await exportarReservasAExcel();
-            await bot.sendMessage(remitente, { 
-                text: `✅ Reservas exportadas exitosamente.\n📁 Ruta: ${rutaArchivo}` 
-            });
-        } catch (error) {
-            logger.error(`Error exportando reservas: ${error}`, error);
-            await bot.sendMessage(remitente, { 
-                text: '❌ Error al exportar reservas. Por favor intenta más tarde.' 
-            });
-        }
     } else {
         await handleMainMenuOptions(bot, remitente, mensajeTexto.trim(), establecerEstado);
     }
@@ -31,11 +18,11 @@ async function handleListaCabanas(bot, remitente, mensajeTexto, establecerEstado
         return;
     }
 
-    const seleccion = parseInt(mensajeTexto.trim());
-    if (isNaN(seleccion)) {
-        await enviarMenuCabanas(bot, remitente);
+    const input = mensajeTexto.trim();
+    if (!/^\d+$/.test(input)) {
+        await enviarMenuCabanas(bot, remitente, 'No reconocí la selección. Responde con el número de un alojamiento.');
     } else {
-        await enviarDetalleCabaña(bot, remitente, seleccion);
+        await enviarDetalleCabaña(bot, remitente, Number(input));
     }
 }
 

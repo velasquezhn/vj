@@ -19,7 +19,7 @@ pnpm build
 pnpm start
 ```
 
-El servidor escucha `0.0.0.0:$PORT`. Compruebe `GET http://localhost:4000/health`.
+El servidor escucha `0.0.0.0:$PORT`. Compruebe `GET http://localhost:4000/health`. La respuesta informa `weatherConfigured` sin revelar la clave.
 En Docker, el arranque ejecuta automáticamente la migración y la carga idempotente de las 13 cabañas antes de iniciar el servidor.
 
 Cree el primer administrador después de migrar, pasando las credenciales solo por el entorno:
@@ -51,7 +51,10 @@ Copie `.env.example`; nunca versione `.env` ni credenciales.
 - `PAYMENT_WINDOW_HOURS`: plazo informado y reservado para que el huésped envíe el comprobante después de la autorización (24 por defecto).
 - `NOTIFICATION_QUEUE_ENABLED`: activa la cola persistente de entrega (recomendado: `true`).
 - `NOTIFICATION_QUEUE_INTERVAL_MS`: frecuencia de revisión de mensajes pendientes (60 000 ms por defecto; mínimo 15 000).
-- `OPENWEATHER_API_KEY`: opcional; habilita el pronóstico del menú sin guardar la clave en el código.
+- `OPENWEATHER_API_KEY`: habilita el pronóstico del menú sin guardar la clave en el código. Si falta, Clima muestra un error recuperable y no bloquea el bot.
+- `OPENWEATHER_BASE_URL`: URL de OpenWeather; conserve el valor de `.env.example` salvo que use un proveedor compatible controlado.
+- `WEATHER_TIMEOUT_MS`: tiempo máximo por petición de clima, entre 1 000 y 20 000 ms; predeterminado 8 000.
+- `CONVERSATION_SESSION_TTL_MINUTES`: vencimiento por inactividad de los flujos ordinarios, entre 5 y 1 440 minutos; los estados de pago y confirmación conservan como mínimo 24 horas.
 
 ## Configuración de Meta
 
@@ -72,6 +75,8 @@ El webhook procesa texto, botones, listas, imágenes, documentos y estados. Los 
 El menú principal, los alojamientos y las experiencias usan listas interactivas oficiales de Meta. La confirmación de fechas, la aceptación de condiciones y las acciones posteriores usan botones de respuesta. Los identificadores de botones se convierten a comandos internos estables, por lo que las respuestas numéricas escritas siguen siendo compatibles. Si Meta no acepta temporalmente un mensaje interactivo, el bot envía automáticamente una alternativa en texto.
 
 Los mensajes interactivos solo pueden enviarse dentro de la ventana de atención iniciada por el huésped. Para iniciar conversaciones fuera de esa ventana se debe crear y aprobar una plantilla en WhatsApp Manager; las plantillas no se usan para navegar los menús.
+
+La opción **Clima** solicita una ciudad en vez de asumir una ubicación fija. Acepta nombres con país, ofrece acceso directo a Tela y conserva botones para actualizar, cambiar ciudad o volver al menú después de cualquier respuesta. OpenWeather se consulta con timeout y manejo diferenciado de ciudad inexistente, límite de uso, credenciales inválidas, fallo de red y respuesta incompleta.
 
 ### Fechas escritas por WhatsApp
 

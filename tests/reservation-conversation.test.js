@@ -76,7 +76,10 @@ describe('flujo conversacional de reserva', () => {
     await handleReservaState(bot, sender, '', ESTADOS_RESERVA.ESPERANDO_PAGO, {
       reservaId: 7, confirmationCode: 'VJ-000007'
     }, { imageMessage: { id: 'media' } });
-    expect(bot.sendMessage.mock.calls[0][1].text).toContain('PLAZO DE PAGO VENCIÓ');
+    expect(sendReplyButtons.mock.calls[0][2]).toEqual(expect.objectContaining({
+      header: 'Plazo de pago vencido',
+      buttons: expect.arrayContaining([expect.objectContaining({ title: 'Menú principal' })])
+    }));
     expect(establecerEstado).toHaveBeenCalledWith(sender, 'MENU_PRINCIPAL', {});
   });
 
@@ -84,7 +87,7 @@ describe('flujo conversacional de reserva', () => {
     guardarComprobante.mockRejectedValueOnce(Object.assign(new Error('duplicado'), { code: 'RECEIPT_ALREADY_RECEIVED' }));
     const data = { reservaId: 8, confirmationCode: 'VJ-000008' };
     await handleReservaState(bot, sender, '', ESTADOS_RESERVA.ESPERANDO_PAGO, data, { imageMessage: { id: 'media' } });
-    expect(bot.sendMessage.mock.calls[0][1].text).toContain('Ya recibimos el comprobante');
+    expect(sendReplyButtons.mock.calls[0][2].body).toContain('Ya recibimos el comprobante');
     expect(establecerEstado).toHaveBeenCalledWith(sender, ESTADOS_RESERVA.ESPERANDO_CONFIRMACION, data);
   });
 });

@@ -1,127 +1,50 @@
-const cabinsDataService = require('../services/cabinsDataService');
-const menuActivitiesService = require('../services/menuActivitiesService');
-const WeatherModule = require('../services/weatherService');
-const { sendShareExperienceInstructions } = require('../routes/shareExperience');
-// const { manejarPostReserva } = require('../routes/postReservaHandler'); // TEMPORALMENTE COMENTADO
 const { extraerTelefono } = require('../utils/telefonoUtils');
-const { sendMessageWithDelay } = require('../utils/messageDelayUtils');
 const { enviarMenuPrincipal, enviarMenuCabanas, enviarMenuActividades } = require('../services/messagingService');
-const { sendReplyButtons } = require('../services/whatsappInteractiveService');
+const { sendReplyButtons, sendList } = require('../services/whatsappInteractiveService');
 const { getPaymentSettings } = require('../services/paymentSettingsService');
+const { showWeatherPrompt } = require('./flows/weatherHandler');
+const { CONVERSATION_STATES, MAIN_MENU_OPTIONS, BUTTON_IDS } = require('../services/whatsappConversation');
+const logger = require('../config/logger');
 const {
   reservationStart,
   contactMessage,
   faqMessage,
-  invalidOption,
   NAVIGATION_FOOTER
 } = require('../services/whatsappMessages');
 
-const weatherModule = new WeatherModule(process.env.OPENWEATHER_API_KEY);
-
-// Estados constantes
-const STATES = {
-  LODGING: 'LISTA_CABAÑAS',  // Cambiado de 'alojamientos' a 'LISTA_CABAÑAS' para consistencia
-  DATES: 'reservar_fechas',
-  ACTIVITIES: 'actividades',
-  POST_ACTIVITY: 'post_actividad',
-  SHARE_EXPERIENCE: 'compartir_experiencia',
-  POST_RESERVA: 'post_reserva'
-};
-
-// Helper de envío inmediato con manejo uniforme de errores.
-async function safeSend(bot, recipient, text) {
-  try {
-    await sendMessageWithDelay(bot, recipient, { text });
-    return true;
-  } catch (error) {
-    console.error(`Error al enviar mensaje a ${recipient}:`, error);
-    return false;
-  }
-}
-
-// Helper para generar menús dinámicos
-async function generateDynamicMenu(itemType) {
-  try {
-    let items = [];
-    
-    if (itemType === 'cabañas') {
-      items = await cabinsDataService.getAllCabins();
-    } else if (itemType === 'actividades') {
-      // Usar el servicio de base de datos para obtener actividades
-      items = await menuActivitiesService.loadActividades();
-    }
-    
-    if (items.length === 0) {
-      return `⚠️ No hay ${itemType} disponibles en este momento.`;
-    }
-
-    let title = '';
-    if (itemType === 'cabañas') {
-      title = `🏠 *Nuestros alojamientos disponibles:*\n\n`;
-    } else if (itemType === 'actividades') {
-      title = `🎯 *Actividades y experiencias disponibles:*\n\n`;
-    }
-    
-    const list = items.map((item, index) => {
-      const name = item.name || item.nombre || `${itemType.slice(0, -1)} ${index + 1}`;
-      
-      if (itemType === 'cabañas') {
-        const capacity = item.capacity ? ` (${item.capacity} personas)` : '';
-        const price = item.basePrice && item.basePrice > 0 ? ` - $${item.basePrice}` : '';
-        return `${index + 1}. ${name}${capacity}${price}`;
-      } else if (itemType === 'actividades') {
-        const category = item.categoria ? ` - ${item.categoria}` : '';
-        const duration = item.duracion ? ` (${item.duracion})` : '';
-        return `${index + 1}. ${name}${category}${duration}`;
-      }
-      
-      return `${index + 1}. ${name}`;
-    }).join('\n');
-    
-    const instructions = '\n\n🔍 *Selecciona el número para ver detalles completos y fotos.*\n0️⃣ *Menú principal*';
-    
-    return title + list + instructions;
-  } catch (error) {
-    console.error('Error generando menú dinámico:', error);
-    return `⚠️ Error al cargar ${itemType}. Por favor intenta de nuevo.`;
-  }
-}
-
 async function handleMainMenuOptions(bot, remitente, mensaje, establecerEstado) {
   switch (mensaje) {
-    case '1': // Alojamientos
+    case MAIN_MENU_OPTIONS.LODGING:
       await enviarMenuCabanas(bot, remitente);
       break;
 
-    case '2': // Reservar
-      await safeSend(bot, remitente, reservationStart());
-      await establecerEstado(remitente, STATES.DATES);
+    case MAIN_MENU_OPTIONS.RESERVE:
+      await bot.sendMessage(remitente, { text: reservationStart() });
+      await establecerEstado(remitente, 'reservar_fechas');
       break;
 
-    case '3': // Actividades
+    case MAIN_MENU_OPTIONS.ACTIVITIES:
       await enviarMenuActividades(bot, remitente);
       break;
 
-    case '4': // Contacto
+    case MAIN_MENU_OPTIONS.CONTACT:
       await sendReplyButtons(bot, remitente, {
         header: 'Contacto',
-        body: contactMessage(),
+        body: `${contactMessage()}\n\nEscribe tu consulta en un solo mensaje o pulsa *Solicitar ayuda*.`,
         footer: NAVIGATION_FOOTER,
-        buttons: [{ id: 'main_menu', title: 'Menú principal' }]
+        buttons: [
+          { id: BUTTON_IDS.HELP_REQUEST, title: 'Solicitar ayuda' },
+          { id: BUTTON_IDS.MAIN_MENU, title: 'Menú principal' }
+        ]
       });
+      await establecerEstado(remitente, CONVERSATION_STATES.CONTACT_MESSAGE, {});
       break;
 
-    case '5': // Clima
-      try {
-        const climaResponse = await weatherModule.getWeatherForecast();
-        await safeSend(bot, remitente, climaResponse.message);
-      } catch (error) {
-        console.error('Error obteniendo clima:', error);
-        await safeSend(bot, remitente, '⚠️ Error obteniendo pronóstico. Intenta más tarde.');
-      }
+    case MAIN_MENU_OPTIONS.WEATHER:
+      await showWeatherPrompt(bot, remitente, establecerEstado);
       break;
 
-    case '6': // Preguntas Frecuentes
+    case MAIN_MENU_OPTIONS.FAQ:
       {
         const payment = await getPaymentSettings();
         await sendReplyButtons(bot, remitente, {
@@ -129,77 +52,54 @@ async function handleMainMenuOptions(bot, remitente, mensaje, establecerEstado) 
           body: faqMessage(payment.deposit_percentage),
           footer: NAVIGATION_FOOTER,
           buttons: [
-            { id: 'reservation_start', title: 'Reservar' },
-            { id: 'main_menu', title: 'Menú principal' }
+            { id: BUTTON_IDS.RESERVATION_START, title: 'Reservar' },
+            { id: BUTTON_IDS.MAIN_MENU, title: 'Menú principal' }
           ]
         });
       }
       break;
 
-    case '7': // Compartir experiencia
-      try {
-        await sendShareExperienceInstructions(bot, remitente, establecerEstado);
-      } catch (error) {
-        console.error('Error al enviar instrucciones:', error);
-        await safeSend(bot, remitente, '⚠️ Error al procesar tu solicitud');
-      }
-      break;
-
-    case '8': // Soporte post-reserva
+    case MAIN_MENU_OPTIONS.MY_RESERVATION:
       try {
         await manejarPostReserva(bot, remitente, mensaje, establecerEstado);
       } catch (error) {
-        console.error('Error en soporte post-reserva:', error);
-        await safeSend(bot, remitente, '⚠️ Error en soporte post-reserva');
+        logger.error('Error en soporte post-reserva', { error: error.message });
+        await sendReplyButtons(bot, remitente, {
+          body: '⚠️ No pudimos consultar la reserva. Intenta nuevamente o vuelve al menú.',
+          buttons: [{ id: BUTTON_IDS.MAIN_MENU, title: 'Menú principal' }]
+        });
       }
       break;
 
-    case '9': // Programa fidelidad
-      await sendReplyButtons(bot, remitente, {
-        header: 'Beneficios',
-        body: '💎 Las promociones y beneficios se anuncian directamente por nuestros canales oficiales. Consulta con el equipo cuáles están disponibles para tus fechas.',
-        footer: NAVIGATION_FOOTER,
-        buttons: [
-          { id: 'main_4', title: 'Contactar' },
-          { id: 'main_menu', title: 'Menú principal' }
-        ]
-      });
-      break;
-
     default: // Opción inválida
-      await safeSend(bot, remitente, invalidOption('Usa el botón “Ver opciones” o responde con un número del 1 al 9.'));
+      await enviarMenuPrincipal(bot, remitente, 'No reconocí esa opción. Selecciona una de la lista o responde del 1 al 7.');
       break;
   }
 }
 
-// FUNCIÓN TEMPORAL PARA OPCIÓN 8 (POST RESERVA)
+// Abre las acciones disponibles para una reserva activa o pendiente.
 async function manejarPostReserva(bot, remitente, mensaje, establecerEstado) {
-  console.log('### FUNCIÓN manejarPostReserva LLAMADA ###');
-  console.log('### PARÁMETROS:', { remitente, mensaje });
-  
   try {
     const telefono = extraerTelefono(remitente);
-    console.log('### TELÉFONO EXTRAÍDO:', telefono);
-    
     const reserva = await buscarReservaActivaOPendiente(telefono);
-    console.log('### RESERVA ENCONTRADA:', reserva);
     
     if (!reserva) {
-      await sendMessageWithDelay(bot, remitente, {
-        text: '⚠️ No encontramos reservas activas o pendientes asociadas a este número.\n\n' +
-              '🔹 Solo pueden acceder usuarios con:\n' +
-              '   • Reservas activas (confirmadas)\n' +
-              '   • Solicitudes pendientes de autorización o pago\n\n' +
-              '1. Hablar con un agente\n' +
-              '2. Volver al menú principal\n\n' +
-              'Por favor, responde con 1 o 2.\n\nEscribe "menu" para ir al menú principal.'
+      await sendReplyButtons(bot, remitente, {
+        header: 'Mi reserva',
+        body: 'No encontramos reservas activas o pendientes asociadas a este número. Puedes pedir ayuda o volver al menú.',
+        buttons: [
+          { id: 'post_1', title: 'Solicitar ayuda' },
+          { id: BUTTON_IDS.MAIN_MENU, title: 'Menú principal' }
+        ],
+        fallbackText: 'No encontramos reservas activas.\n\n1. Solicitar ayuda\n0. Menú principal'
       });
-      await establecerEstado(remitente, 'post_reserva_no_reserva');
+      await establecerEstado(remitente, CONVERSATION_STATES.POST_RESERVATION_EMPTY);
       return;
     }
 
-    if (mensaje === '8') {
+    if (mensaje === MAIN_MENU_OPTIONS.MY_RESERVATION) {
       let menuTexto = '🎯 *AYUDA POST RESERVA*\n\n';
+      let primaryTitle = 'Consultar estado';
       
       if (reserva.status === 'pendiente_autorizacion') {
         menuTexto += '📋 Estado: *Esperando autorización de pago*\n';
@@ -211,6 +111,7 @@ async function manejarPostReserva(bot, remitente, mensaje, establecerEstado) {
         menuTexto += `📅 Reserva ID: ${reserva.reservation_id}\n`;
         menuTexto += `👤 Huésped: ${reserva.guest_name}\n\n`;
         menuTexto += '1. 📎 Enviar Comprobante\n';
+        primaryTitle = 'Enviar comprobante';
       } else if (reserva.status === 'pendiente_verificacion') {
         menuTexto += '📋 Estado: *Comprobante recibido; revisión final pendiente*\n';
         menuTexto += `📅 Reserva ID: ${reserva.reservation_id}\n`;
@@ -221,6 +122,7 @@ async function manejarPostReserva(bot, remitente, mensaje, establecerEstado) {
         menuTexto += `📅 Reserva ID: ${reserva.reservation_id}\n`;
         menuTexto += `👤 Huésped: ${reserva.guest_name}\n\n`;
         menuTexto += '1. 🔐 Información de acceso\n';
+        primaryTitle = 'Información acceso';
       }
       
       menuTexto += '2. ✏️ Modificar reserva\n';
@@ -228,16 +130,30 @@ async function manejarPostReserva(bot, remitente, mensaje, establecerEstado) {
       menuTexto += '4. 🆘 Solicitar asistencia\n\n';
       menuTexto += 'Responde con el número de tu opción.\n\nEscribe "menu" para ir al menú principal.';
       
-      console.log('### ENVIANDO MENÚ ###');
-      await sendMessageWithDelay(bot, remitente, { text: menuTexto });
-      await establecerEstado(remitente, 'post_reserva_menu', { reserva });
-      console.log('### MENÚ ENVIADO Y ESTADO ESTABLECIDO ###');
+      await sendList(bot, remitente, {
+        header: 'Mi reserva',
+        body: `Reserva *${reserva.confirmation_code || reserva.reservation_id}* · ${reserva.status.replaceAll('_', ' ')}`,
+        buttonText: 'Ver acciones',
+        footer: NAVIGATION_FOOTER,
+        sections: [{
+          title: 'Acciones disponibles',
+          rows: [
+            { id: 'post_1', title: primaryTitle, description: 'Consultar o completar el paso actual' },
+            { id: 'post_2', title: 'Solicitar modificación', description: 'Un administrador te contactará' },
+            { id: 'post_3', title: 'Solicitar cancelación', description: 'Requiere confirmación' },
+            { id: 'post_4', title: 'Solicitar asistencia', description: 'Avisar a los administradores' }
+          ]
+        }],
+        fallbackText: menuTexto
+      });
+      await establecerEstado(remitente, CONVERSATION_STATES.POST_RESERVATION_MENU, { reserva });
+      logger.info('Menú de reserva enviado', { reservationId: reserva.reservation_id, status: reserva.status });
       return;
     }
     
   } catch (error) {
-    console.error('Error en manejarPostReserva:', error);
-    await sendMessageWithDelay(bot, remitente, {
+    logger.error('Error iniciando flujo de Mi reserva', { error: error.message });
+    await bot.sendMessage(remitente, {
       text: 'Lo siento, ocurrió un error. Por favor intenta de nuevo más tarde.\n\nEscribe "menu" para ir al menú principal.'
     });
   }
@@ -249,10 +165,11 @@ async function buscarReservaActivaOPendiente(telefono) {
     const { runQuery } = require('../db');
     
     const sql = `
-      SELECT r.*, u.name as guest_name, u.phone_number,
+      SELECT r.*, u.name as guest_name, u.phone_number, c.name AS cabin_name,
              r.start_date as check_in_date, r.end_date as check_out_date
       FROM Reservations r
       JOIN Users u ON r.user_id = u.user_id
+      JOIN Cabins c ON c.cabin_id = r.cabin_id
       WHERE u.phone_number = ? AND r.status IN (
         'confirmada', 'confirmado', 'pendiente_autorizacion',
         'esperando_pago', 'pendiente_verificacion'
@@ -275,13 +192,11 @@ async function buscarReservaActivaOPendiente(telefono) {
 
     return null;
   } catch (error) {
-    console.error('Error buscando reserva:', error);
+    logger.error('Error buscando reserva activa por WhatsApp', { error: error.message });
     return null;
   }
 }
 
 module.exports = {
-  handleMainMenuOptions,
-  generateDynamicMenu,
-  STATES // Exportamos estados si se necesitan en otros módulos
+  handleMainMenuOptions
 };

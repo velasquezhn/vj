@@ -3,8 +3,7 @@ const { calcularPrecioTotal } = require('../../services/reservaPriceService');
 const { guardarComprobante } = require('../../services/comprobanteService');
 const { descargarMedia } = require('../../utils/mediaUtils');
 const { ESTADOS_RESERVA } = require('../reservaConstants');
-const { createReservationWithUser, normalizePhoneNumber, upsertUser } = require('../../services/reservaService');
-const alojamientosService = require('../../services/alojamientosService');
+const { createReservationWithUser, upsertUser } = require('../../services/reservaService');
 const { parseDateRange } = require('../../utils/dateRangeParser');
 const { 
   validateHonduranPhone, 
@@ -16,6 +15,7 @@ const { sendReplyButtons } = require('../../services/whatsappInteractiveService'
 const { enviarMenuPrincipal } = require('../../services/messagingService');
 const { reservationStart, NAVIGATION_FOOTER } = require('../../services/whatsappMessages');
 const { getBusinessSettings, reservationTerms } = require('../../services/businessSettingsService');
+const { BUTTON_IDS } = require('../../services/whatsappConversation');
 
 // Funciones auxiliares para mejorar la legibilidad
 
@@ -47,10 +47,7 @@ async function handleReservaState(bot, remitente, mensajeTexto, estado, datos, m
     try {
         switch (estado) {
             case ESTADOS_RESERVA.FECHAS: {
-                logger.info('Procesando fechas de reserva', { 
-                    userId: remitente, 
-                    input: mensajeTexto 
-                });
+                logger.info('Procesando fechas de reserva', { userId: remitente });
                 
                 // Usar el parser flexible para múltiples formatos
                 const validacionFechas = parseDateRange(mensajeTexto);
@@ -61,7 +58,6 @@ async function handleReservaState(bot, remitente, mensajeTexto, estado, datos, m
                     });
                     logger.warn('Fechas inválidas rechazadas', {
                         userId: remitente,
-                        input: mensajeTexto,
                         error: validacionFechas.error
                     });
                     return;
@@ -108,9 +104,9 @@ Selecciona una opción para continuar.`;
                     body: confirmacionMensaje,
                     footer: 'Podrás cambiarlas antes de reservar',
                     buttons: [
-                        { id: 'dates_yes', title: 'Sí, confirmar' },
-                        { id: 'dates_no', title: 'Cambiar fechas' },
-                        { id: 'main_menu', title: 'Menú principal' }
+                        { id: BUTTON_IDS.DATES_YES, title: 'Sí, confirmar' },
+                        { id: BUTTON_IDS.DATES_NO, title: 'Cambiar fechas' },
+                        { id: BUTTON_IDS.MAIN_MENU, title: 'Menú principal' }
                     ],
                     fallbackText: `${confirmacionMensaje}\n\n✅ Escribe *"SÍ"* para confirmar\n❌ Escribe *"NO"* para cambiar`
                 });
@@ -134,7 +130,15 @@ Selecciona una opción para continuar.`;
                     await bot.sendMessage(remitente, { text: reservationStart() });
                     await establecerEstado(remitente, ESTADOS_RESERVA.FECHAS, {});
                 } else {
-                    await bot.sendMessage(remitente, { text: 'No entendí la respuesta. Usa los botones o escribe *sí* para confirmar y *no* para cambiar las fechas.' });
+                    await sendReplyButtons(bot, remitente, {
+                        body: 'No entendí la respuesta. Confirma las fechas o solicita cambiarlas.',
+                        buttons: [
+                            { id: BUTTON_IDS.DATES_YES, title: 'Sí, confirmar' },
+                            { id: BUTTON_IDS.DATES_NO, title: 'Cambiar fechas' },
+                            { id: BUTTON_IDS.MAIN_MENU, title: 'Menú principal' }
+                        ],
+                        fallbackText: 'Responde *sí* para confirmar, *no* para cambiar las fechas o *menú* para salir.'
+                    });
                 }
                 break;
             }
@@ -157,9 +161,9 @@ Selecciona una opción para continuar.`;
                     return;
                 }
                 
-                if (!/^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+$/.test(nombreInput)) {
+                if (!/^[\p{L}\s.'-]+$/u.test(nombreInput)) {
                     await bot.sendMessage(remitente, { 
-                        text: '❌ *El nombre solo puede contener letras y espacios.*\n\n📝 *Por favor, ingresa tu nombre completo:*' 
+                        text: '❌ El nombre solo puede contener letras, espacios, apóstrofes, puntos o guiones.\n\nEscribe tu nombre completo:'
                     });
                     return;
                 }
@@ -171,7 +175,6 @@ Selecciona una opción para continuar.`;
                 if (!phoneValidation.isValid) {
                     logger.warn('Teléfono inválido detectado', {
                         userId: remitente,
-                        phone: telefono,
                         error: phoneValidation.message
                     });
                 }
@@ -180,8 +183,7 @@ Selecciona una opción para continuar.`;
                 
                 logger.info('Nombre validado y guardado', {
                     userId: remitente,
-                    name: nombreInput,
-                    phone: phoneValidation.formatted || telefono
+                    phoneValid: phoneValidation.isValid
                 });
                 
                 await establecerEstado(remitente, ESTADOS_RESERVA.PERSONAS, { 
@@ -193,7 +195,8 @@ Selecciona una opción para continuar.`;
             }
 
             case ESTADOS_RESERVA.PERSONAS: {
-                const cantidad = parseInt(mensajeTexto.trim());
+                const peopleInput = mensajeTexto.trim();
+                const cantidad = /^\d+$/.test(peopleInput) ? Number(peopleInput) : NaN;
                 
                 // Validar número de personas
                 if (isNaN(cantidad)) {
@@ -210,9 +213,9 @@ Selecciona una opción para continuar.`;
                     return;
                 }
                 
-                if (cantidad > 10) {
+                if (cantidad > 9) {
                     await bot.sendMessage(remitente, {
-                        text: `❌ *Máximo 10 personas por reserva.*\n\n👥 Para grupos más grandes, considera hacer múltiples reservas.\n\n*¿Cuántas personas serán?*`
+                        text: '❌ La capacidad máxima de una cabaña es de 9 personas. Para grupos mayores, solicita varias reservas.\n\n¿Cuántas personas se hospedarán?'
                     });
                     return;
                 }
@@ -274,9 +277,9 @@ ${reservationTerms(businessSettings)}
                         body: resumenReserva,
                         footer: 'La disponibilidad se confirma al continuar',
                         buttons: [
-                            { id: 'terms_accept', title: 'Acepto' },
-                            { id: 'terms_decline', title: 'No acepto' },
-                            { id: 'main_menu', title: 'Menú principal' }
+                            { id: BUTTON_IDS.TERMS_ACCEPT, title: 'Acepto' },
+                            { id: BUTTON_IDS.TERMS_DECLINE, title: 'No acepto' },
+                            { id: BUTTON_IDS.MAIN_MENU, title: 'Menú principal' }
                         ],
                         fallbackText: `${resumenReserva}\n\nResponde *sí* para aceptar o *no* para rechazar.`
                     });
@@ -288,9 +291,10 @@ ${reservationTerms(businessSettings)}
                         precioTotal
                     });
                 } catch (error) {
-                    console.error('Error cálculo precio:', error);
-                    await bot.sendMessage(remitente, { 
-                        text: '❌ Error calculando el precio. Intenta nuevamente' 
+                    logger.error('Error calculando precio de reserva', { error: error.message });
+                    await sendReplyButtons(bot, remitente, {
+                        body: '❌ No pudimos calcular el precio. Escribe nuevamente la cantidad de personas o vuelve al menú.',
+                        buttons: [{ id: BUTTON_IDS.MAIN_MENU, title: 'Menú principal' }]
                     });
                 }
                 break;
@@ -305,8 +309,14 @@ ${reservationTerms(businessSettings)}
                         await enviarMenuPrincipal(bot, remitente);
                         return;
                     }
-                    await bot.sendMessage(remitente, { 
-                        text: 'Usa los botones o responde *sí* para aceptar y continuar, o *no* para cancelar la solicitud.'
+                    await sendReplyButtons(bot, remitente, {
+                        body: 'No entendí la respuesta. Acepta las condiciones para registrar la solicitud o cancela el borrador.',
+                        buttons: [
+                            { id: BUTTON_IDS.TERMS_ACCEPT, title: 'Acepto' },
+                            { id: BUTTON_IDS.TERMS_DECLINE, title: 'No acepto' },
+                            { id: BUTTON_IDS.MAIN_MENU, title: 'Menú principal' }
+                        ],
+                        fallbackText: 'Responde *sí* para aceptar, *no* para cancelar o *menú* para salir.'
                     });
                     return;
                 }
@@ -331,10 +341,13 @@ ${reservationTerms(businessSettings)}
                         const tipoNombre = datos.alojamiento === 'tortuga' ? 'Tortuga' : 
                                           datos.alojamiento === 'delfin' ? 'Delfín' : 'Tiburón';
                         
-                        await bot.sendMessage(remitente, { 
-                            text: `❌ Lo sentimos, no hay cabañas tipo *${tipoNombre}* disponibles para las fechas *${datos.fechaEntrada} - ${datos.fechaSalida}*.\n\n` +
-                                  `📅 Por favor selecciona otras fechas o consulta disponibilidad de otros tipos de cabaña.\n\n` +
-                                  `Escribe *menú* para comenzar otra solicitud.`
+                        await sendReplyButtons(bot, remitente, {
+                            header: 'Sin disponibilidad',
+                            body: `No hay cabañas tipo *${tipoNombre}* disponibles del *${datos.fechaEntrada}* al *${datos.fechaSalida}*. Puedes intentar con otras fechas.`,
+                            buttons: [
+                                { id: BUTTON_IDS.RESERVATION_START, title: 'Cambiar fechas' },
+                                { id: BUTTON_IDS.MAIN_MENU, title: 'Menú principal' }
+                            ]
                         });
                         
                         // Limpiar estado para que pueda empezar de nuevo
@@ -344,9 +357,10 @@ ${reservationTerms(businessSettings)}
                     
                     // HAY DISPONIBILIDAD - Continuar con la reserva
                 } catch (error) {
-                    console.error('Error verificando disponibilidad:', error);
-                    await bot.sendMessage(remitente, { 
-                        text: '❌ Error verificando disponibilidad. Por favor intenta nuevamente.' 
+                    logger.error('Error verificando disponibilidad', { error: error.message });
+                    await sendReplyButtons(bot, remitente, {
+                        body: '❌ No pudimos verificar la disponibilidad. Intenta aceptar nuevamente o vuelve al menú.',
+                        buttons: [{ id: BUTTON_IDS.MAIN_MENU, title: 'Menú principal' }]
                     });
                     return;
                 }
@@ -362,14 +376,15 @@ ${reservationTerms(businessSettings)}
                 if (!created.success) throw new Error(created.error || 'No se pudo crear la solicitud');
                 await upsertUser(datos.telefono, datos.nombre);
 
-                await bot.sendMessage(remitente, {
-                    text: `✅ *SOLICITUD REGISTRADA*\n\n` +
-                          `Código: *${created.confirmationCode}*\n` +
+                await sendReplyButtons(bot, remitente, {
+                    header: 'Solicitud registrada',
+                    body: `Código: *${created.confirmationCode}*\n` +
                           `Estado: *Pendiente de autorización administrativa*\n` +
                           `Alojamiento: *${cabanaDisponible.name}*\n` +
                           `Fechas: *${fechaInicio} al ${fechaFin}*\n` +
                           `Total: *HNL ${Number(datos.precioTotal).toLocaleString('es-HN')}*\n\n` +
-                          '⏳ Un administrador revisará primero la disponibilidad y el total. Todavía no realices el pago ni envíes comprobantes. Te avisaremos por este chat cuando el pago esté autorizado.'
+                          '⏳ Un administrador revisará primero la disponibilidad y el total. Todavía no realices el pago ni envíes comprobantes. Te avisaremos cuando el pago esté autorizado.',
+                    buttons: [{ id: BUTTON_IDS.MAIN_MENU, title: 'Menú principal' }]
                 });
 
                 const reservationState = {
@@ -396,25 +411,28 @@ ${reservationTerms(businessSettings)}
             }
 
             case ESTADOS_RESERVA.ESPERANDO_AUTORIZACION: {
-                await bot.sendMessage(remitente, {
-                    text: `⏳ Tu solicitud *${datos.confirmationCode || ''}* todavía espera autorización administrativa.\n\n` +
-                          'No envíes el comprobante todavía. Cuando sea autorizada recibirás un mensaje que habilita el pago.'
+                await sendReplyButtons(bot, remitente, {
+                    header: 'Autorización pendiente',
+                    body: `Tu solicitud *${datos.confirmationCode || ''}* todavía espera autorización administrativa.\n\nNo envíes el comprobante todavía. Te avisaremos cuando se habilite el pago.`,
+                    buttons: [{ id: BUTTON_IDS.MAIN_MENU, title: 'Menú principal' }]
                 });
                 break;
             }
 
             case ESTADOS_RESERVA.ESPERANDO_PAGO: {
                 if (!datos?.reservaId) {
-                    await bot.sendMessage(remitente, {
-                        text: 'Actualizamos el sistema de reservas y esta solicitud anterior quedó incompleta. Escribe *menú* y crea una nueva solicitud; no se realizó ningún cargo.'
+                    await sendReplyButtons(bot, remitente, {
+                        body: 'Actualizamos el sistema y esta solicitud anterior quedó incompleta. No se realizó ningún cargo; inicia una solicitud nueva desde el menú.',
+                        buttons: [{ id: BUTTON_IDS.MAIN_MENU, title: 'Menú principal' }]
                     });
                     await establecerEstado(remitente, 'MENU_PRINCIPAL', {});
                     return;
                 }
                 const esComprobante = mensaje.imageMessage || mensaje.documentMessage;
                 if (!esComprobante) {
-                    await bot.sendMessage(remitente, { 
-                        text: `📎 Envía una *foto* o un archivo *PDF* del comprobante.\n\n${NAVIGATION_FOOTER}.`
+                    await sendReplyButtons(bot, remitente, {
+                        body: '📎 Envía una *foto* o un archivo *PDF* del comprobante. Si todavía no deseas enviarlo, puedes volver al menú.',
+                        buttons: [{ id: BUTTON_IDS.MAIN_MENU, title: 'Menú principal' }]
                     });
                     return;
                 }
@@ -427,8 +445,10 @@ ${reservationTerms(businessSettings)}
                         mimetype,
                         nombreArchivo
                     );
-                    await bot.sendMessage(remitente, {
-                        text: `✅ *COMPROBANTE RECIBIDO*\n\nSolicitud: *${datos.confirmationCode || `VJ-${String(datos.reservaId).padStart(6, '0')}`}*\n\nEl administrador debe verificar ahora el pago. Te notificaremos por este chat cuando la reserva tenga la confirmación final.`
+                    await sendReplyButtons(bot, remitente, {
+                        header: 'Comprobante recibido',
+                        body: `Solicitud: *${datos.confirmationCode || `VJ-${String(datos.reservaId).padStart(6, '0')}`}*\n\nEl administrador debe verificar ahora el pago. Te notificaremos por este chat cuando la reserva tenga la confirmación final.`,
+                        buttons: [{ id: BUTTON_IDS.MAIN_MENU, title: 'Menú principal' }]
                     });
                     const { notifyWhatsAppAdmins } = require('../../services/whatsappAdminService');
                     const adminDelivery = await notifyWhatsAppAdmins(bot, datos.reservaId);
@@ -440,24 +460,29 @@ ${reservationTerms(businessSettings)}
                     await establecerEstado(remitente, ESTADOS_RESERVA.ESPERANDO_CONFIRMACION, datos);
                 } catch (error) {
                     if (error.code === 'PAYMENT_WINDOW_EXPIRED') {
-                        await bot.sendMessage(remitente, {
-                            text: `⌛ *EL PLAZO DE PAGO VENCIÓ*\n\nLa solicitud *${datos.confirmationCode || ''}* no recibió un comprobante dentro de las 24 horas autorizadas. No se realizó ningún cargo.\n\nSelecciona *Menú principal* para iniciar una nueva solicitud.`
+                        await sendReplyButtons(bot, remitente, {
+                            header: 'Plazo de pago vencido',
+                            body: `La solicitud *${datos.confirmationCode || ''}* no recibió un comprobante dentro de las 24 horas autorizadas. No se realizó ningún cargo.`,
+                            buttons: [{ id: BUTTON_IDS.MAIN_MENU, title: 'Menú principal' }]
                         });
                         await establecerEstado(remitente, 'MENU_PRINCIPAL', {});
                     } else if (error.code === 'RECEIPT_ALREADY_RECEIVED') {
-                        await bot.sendMessage(remitente, {
-                            text: `✅ Ya recibimos el comprobante de la solicitud *${datos.confirmationCode || ''}*. Está pendiente de revisión administrativa.`
+                        await sendReplyButtons(bot, remitente, {
+                            body: `Ya recibimos el comprobante de la solicitud *${datos.confirmationCode || ''}*. Está pendiente de revisión administrativa.`,
+                            buttons: [{ id: BUTTON_IDS.MAIN_MENU, title: 'Menú principal' }]
                         });
                         await establecerEstado(remitente, ESTADOS_RESERVA.ESPERANDO_CONFIRMACION, datos);
                     } else if (error.code === 'RECEIPT_NOT_ALLOWED') {
-                        await bot.sendMessage(remitente, {
-                            text: 'El envío de comprobantes no está habilitado para esta solicitud. Escribe *menú* para consultar las opciones disponibles.'
+                        await sendReplyButtons(bot, remitente, {
+                            body: 'El envío de comprobantes no está habilitado para esta solicitud.',
+                            buttons: [{ id: BUTTON_IDS.MAIN_MENU, title: 'Menú principal' }]
                         });
                         await establecerEstado(remitente, 'MENU_PRINCIPAL', {});
                     } else {
                         logger.error('Error procesando comprobante', { reservationId: datos.reservaId, code: error.code, error: error.message });
-                        await bot.sendMessage(remitente, {
-                            text: '⚠️ No pudimos procesar el comprobante. Verifica que sea una foto o PDF válido e intenta nuevamente.'
+                        await sendReplyButtons(bot, remitente, {
+                            body: '⚠️ No pudimos procesar el comprobante. Verifica que sea una foto o PDF válido e intenta nuevamente.',
+                            buttons: [{ id: BUTTON_IDS.MAIN_MENU, title: 'Menú principal' }]
                         });
                     }
                 }
@@ -465,16 +490,19 @@ ${reservationTerms(businessSettings)}
             }
 
             case ESTADOS_RESERVA.ESPERANDO_CONFIRMACION: {
-                await bot.sendMessage(remitente, { 
-                    text: `⏳ Tu solicitud *${datos.confirmationCode || ''}* está pendiente de revisión administrativa. Te notificaremos por este chat cuando termine la revisión.`
+                await sendReplyButtons(bot, remitente, {
+                    header: 'Comprobante en revisión',
+                    body: `Tu solicitud *${datos.confirmationCode || ''}* está pendiente de revisión administrativa. Te notificaremos cuando termine la revisión.`,
+                    buttons: [{ id: BUTTON_IDS.MAIN_MENU, title: 'Menú principal' }]
                 });
                 break;
             }
         }
     } catch (error) {
         logger.error('Error en el flujo de reserva', { userId: remitente, estado, error: error.message });
-        await bot.sendMessage(remitente, { 
-            text: '⚠️ Ocurrió un error inesperado. Por favor intenta nuevamente' 
+        await sendReplyButtons(bot, remitente, {
+            body: '⚠️ Ocurrió un error inesperado. El borrador no se completó; vuelve al menú para iniciar nuevamente.',
+            buttons: [{ id: BUTTON_IDS.MAIN_MENU, title: 'Menú principal' }]
         });
         await establecerEstado(remitente, 'MENU_PRINCIPAL');
     }

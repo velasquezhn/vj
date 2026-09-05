@@ -18,7 +18,8 @@ class WhatsAppCloudService {
   }
 
   async request(payload) {
-    const maxAttempts = Number(process.env.WHATSAPP_MAX_RETRIES || 3) + 1;
+    const configuredRetries = Number(process.env.WHATSAPP_MAX_RETRIES || 3);
+    const maxAttempts = Math.min(Math.max(Number.isFinite(configuredRetries) ? configuredRetries : 3, 0), 5) + 1;
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       try {
         const { data } = await this.http.post(`/${this.config.phoneNumberId}/messages`, payload);
@@ -32,7 +33,9 @@ class WhatsAppCloudService {
         error.retryable = retryable;
         if (!retryable || attempt === maxAttempts) throw error;
         const retryAfter = Number(error.response?.headers?.['retry-after']);
-        const delay = Number.isFinite(retryAfter) ? retryAfter * 1000 : Math.min(500 * (2 ** (attempt - 1)), 5000);
+        const delay = Number.isFinite(retryAfter)
+          ? Math.min(Math.max(retryAfter * 1000, 0), 30000)
+          : Math.min(500 * (2 ** (attempt - 1)), 5000);
         await new Promise((resolve) => setTimeout(resolve, delay));
       }
     }

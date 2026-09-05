@@ -7,7 +7,16 @@ function truncate(value, maxLength) {
 }
 
 function textFallback(body, options) {
-  const lines = options.map((option, index) => `${index + 1}. ${option.title}`);
+  const commands = {
+    main_menu: '0', reservation_start: '2', detail_back: '1', detail_reserve: '2', detail_menu: '0',
+    dates_yes: 'sí', dates_no: 'no', terms_accept: 'sí', terms_decline: 'no', activities_more: '1',
+    weather_tela: '1', weather_other: '2', weather_retry: '1', post_cancel_yes: '1', post_cancel_no: '2',
+    help_request: 'ayuda'
+  };
+  const lines = options.map((option, index) => {
+    const command = option.fallbackValue || commands[option.id] || (/^\d+$/.test(option.id) ? option.id : index + 1);
+    return `${command}. ${option.title}`;
+  });
   return `${body}\n\n${lines.join('\n')}`;
 }
 
