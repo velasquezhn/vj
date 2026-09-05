@@ -24,17 +24,27 @@ function galleryLimit() {
   return Number.isInteger(configured) ? Math.min(Math.max(configured, 1), 5) : 4;
 }
 
+// Textos comerciales breves para WhatsApp. La descripción larga se conserva
+// para el panel, pero no se envía completa al chat porque dificulta la lectura.
+const WHATSAPP_SUMMARIES = Object.freeze({
+  tortuga: 'A media cuadra de la playa de Tela. Apartamento de 1 cuarto con cama matrimonial y cama individual, aire acondicionado y baño privado. Cocineta con refrigeradora, estufa de 2 hornillas, microondas y utensilios. Piscina y área social compartidas hasta las 9:00 p. m.',
+  delfin: 'Alojamiento familiar a media cuadra de la playa de Tela. Dos habitaciones climatizadas, dos baños, cocina completa, sala con TV y Wi‑Fi. Piscina y área social compartidas hasta las 9:00 p. m.',
+  tiburon: 'Alojamiento amplio a media cuadra de la playa de Tela. Tres habitaciones climatizadas, dos baños, cocina completa y sala con TV. Ideal para grupos de hasta 9 personas. Piscina y área social compartidas hasta las 9:00 p. m.'
+});
+
 function buildCabinDetails(cabin) {
   const amenities = Array.isArray(cabin.comodidades) ? cabin.comodidades : [];
   const price = Number(cabin.precio_noche || 0).toLocaleString('es-HN');
-  const description = String(cabin.descripcion || 'Alojamiento cómodo cerca de la playa.').trim();
-  const compactDescription = description.length > 360 ? `${description.slice(0, 357).trim()}…` : description;
+  const summary = WHATSAPP_SUMMARIES[cabin.type_key] || String(cabin.descripcion || 'Alojamiento cómodo cerca de la playa.')
+    .replace(/\s+/g, ' ').trim().slice(0, 240);
   return `🏖️ *${cabin.nombre || 'Alojamiento Villas Julie'}*\n\n` +
     `👥 Hasta ${cabin.capacidad || '-'} personas\n` +
     `🛏️ ${cabin.habitaciones || '-'} habitación(es) · 🚿 ${cabin.baños || '-'} baño(s)\n` +
     `💰 HNL ${price} por noche\n` +
     (amenities.length ? `✨ ${amenities.slice(0, 5).join(' · ')}\n` : '') +
-    `🕑 Entrada 2:00 p. m. · Salida 11:00 a. m.\n\n${compactDescription}`;
+    `🕑 Entrada 2:00 p. m. · Salida 11:00 a. m.\n\n` +
+    `📍 ${summary}\n\n` +
+    `¿Qué deseas hacer? Elige una opción abajo o escribe *menú* para volver al inicio.`;
 }
 
 function cabinMedia(cabin) {
@@ -45,4 +55,4 @@ function cabinMedia(cabin) {
   };
 }
 
-module.exports = { parseMediaList, mediaType, galleryLimit, buildCabinDetails, cabinMedia };
+module.exports = { parseMediaList, mediaType, galleryLimit, buildCabinDetails, cabinMedia, WHATSAPP_SUMMARIES };
