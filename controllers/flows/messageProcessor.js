@@ -29,8 +29,9 @@ function flowDate(value) {
 
 async function handleReservationFlowReply(bot, remitente, reply, establecerEstado) {
     const payload = reply || {};
-    const checkIn = flowDate(payload.check_in || payload.checkIn || payload.fecha_entrada);
-    const checkOut = flowDate(payload.check_out || payload.checkOut || payload.fecha_salida);
+    const range = payload.stay || payload.calendar || payload.calendar_range || {};
+    const checkIn = flowDate(payload.check_in || payload.checkIn || payload.fecha_entrada || range.start_date || range['start-date']);
+    const checkOut = flowDate(payload.check_out || payload.checkOut || payload.fecha_salida || range.end_date || range['end-date']);
     const guests = Number(payload.guests || payload.personas || payload.huespedes);
     const name = String(payload.name || payload.nombre || '').trim();
     const cabin = String(payload.cabin || payload.alojamiento || '').trim().toLowerCase();
