@@ -34,7 +34,9 @@ class WeatherService {
   static isFreeFallbackAllowed() {
     const configured = String(process.env.ALLOW_FREE_WEATHER_FALLBACK || '').trim().toLowerCase();
     if (configured) return ['1', 'true', 'yes', 'si', 'sí'].includes(configured);
-    return String(process.env.APP_ENV || process.env.NODE_ENV || 'development').toLowerCase() !== 'production';
+    const nodeEnv = String(process.env.NODE_ENV || 'development').toLowerCase();
+    const appEnv = String(process.env.APP_ENV || (nodeEnv === 'production' ? 'qa' : 'local')).toLowerCase();
+    return appEnv !== 'production';
   }
 
   getWeatherEmoji(condition, temp) {

@@ -93,4 +93,17 @@ describe('servicio de clima', () => {
     const result = await new WeatherService('', { fallbackHttp, enableFallback: true }).getWeatherForecast('Ciudad Imaginaria');
     expect(result).toMatchObject({ success: false, code: 'CITY_NOT_FOUND' });
   });
+
+  test('el runtime de producción usa el respaldo solo en el ambiente QA predeterminado', () => {
+    const previous = { NODE_ENV: process.env.NODE_ENV, APP_ENV: process.env.APP_ENV, fallback: process.env.ALLOW_FREE_WEATHER_FALLBACK };
+    process.env.NODE_ENV = 'production';
+    delete process.env.APP_ENV;
+    delete process.env.ALLOW_FREE_WEATHER_FALLBACK;
+    expect(WeatherService.isFreeFallbackAllowed()).toBe(true);
+    process.env.APP_ENV = 'production';
+    expect(WeatherService.isFreeFallbackAllowed()).toBe(false);
+    if (previous.NODE_ENV === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = previous.NODE_ENV;
+    if (previous.APP_ENV === undefined) delete process.env.APP_ENV; else process.env.APP_ENV = previous.APP_ENV;
+    if (previous.fallback === undefined) delete process.env.ALLOW_FREE_WEATHER_FALLBACK; else process.env.ALLOW_FREE_WEATHER_FALLBACK = previous.fallback;
+  });
 });
