@@ -1,8 +1,5 @@
 /**
- * Servicio de estados - Ahora usa persistencia en BD
- * 
- * MIGRADO: Este archivo ahora redirige al nuevo sistema persistente
- * Backup del original disponible en: stateService.backup.js
+ * Fachada compatible para el servicio persistente de conversaciones.
  */
 
 // Importar el nuevo servicio persistente
@@ -21,5 +18,3 @@ module.exports = {
   getStateStatistics: persistentStateService.getStateStatistics
 };
 
-// Mensaje de información
-console.log('🔄 [StateService] Usando sistema de estados persistente en BD');

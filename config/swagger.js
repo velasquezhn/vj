@@ -202,8 +202,8 @@ const options = {
             end_date: { type: 'string', format: 'date', example: '2024-08-17' },
             status: { 
               type: 'string', 
-              enum: ['pendiente', 'confirmado', 'cancelado', 'completado'],
-              example: 'confirmado' 
+              enum: ['pendiente_autorizacion', 'esperando_pago', 'pendiente_verificacion', 'confirmada', 'rechazada', 'cancelada', 'expirada'],
+              example: 'confirmada'
             },
             total_price: { type: 'number', format: 'decimal', example: 300.00 },
             personas: { type: 'integer', example: 2 },
@@ -247,9 +247,9 @@ const options = {
             },
             status: { 
               type: 'string', 
-              enum: ['pendiente', 'confirmado', 'cancelado', 'completado'],
-              default: 'pendiente',
-              example: 'pendiente' 
+              enum: ['pendiente_autorizacion', 'esperando_pago', 'pendiente_verificacion', 'confirmada', 'rechazada', 'cancelada', 'expirada'],
+              default: 'pendiente_autorizacion',
+              example: 'pendiente_autorizacion'
             },
             total_price: { 
               type: 'number', 
@@ -329,13 +329,13 @@ const options = {
                 type: 'object',
                 additionalProperties: { 
                   type: 'string', 
-                  enum: ['pendiente', 'confirmado', 'cancelado', 'completado'],
-                  example: 'confirmado' 
+                  enum: ['pendiente_autorizacion', 'esperando_pago', 'pendiente_verificacion', 'confirmada', 'rechazada', 'cancelada', 'expirada'],
+                  example: 'confirmada'
                 }
               },
               example: {
-                "1": { "2024-08-15": "confirmado", "2024-08-16": "confirmado" },
-                "2": { "2024-08-20": "pendiente" }
+                "1": { "2026-09-15": "confirmada", "2026-09-16": "confirmada" },
+                "2": { "2026-09-20": "pendiente_autorizacion" }
               }
             },
             year: { type: 'integer', example: 2024 },
